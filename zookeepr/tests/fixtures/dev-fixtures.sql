@@ -14,7 +14,6 @@ INSERT INTO "invoice_item" VALUES(11,1,52,'Partners Programme - Adult',1,0,23500
 INSERT INTO "invoice_item" VALUES(12,1,53,'Partners Programme - Child (3-14 years old)',1,0,16500,'2011-08-22 04:59:53','2011-08-22 04:59:53');
 INSERT INTO "invoice_item" VALUES(13,1,NULL,'Discount for 1 included T-Shirt',1,0,-2500,'2011-08-22 04:59:53','2011-08-22 04:59:53');
 INSERT INTO "payment" VALUES(1,1,95500,'2011-08-22 05:00:16','2011-08-22 05:00:16');
-INSERT INTO "person" VALUES(1,'admin@zookeepr.org','5f4dcc3b5aa765d61d8327deb882cf99','2011-08-22 11:10:07.542312','2011-08-22 01:10:07','1cdcbcb1d252ff4560f6f66567a3eb70',1,'Admin','User',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,0);
 INSERT INTO "person" VALUES(2,'jacobfarleigh@example.com','b864fe827dbc2ea5b12aee801ed0982f','2011-08-22 11:21:53.074030','2011-08-22 01:21:53','465c0ad2c8ac60b812128df8be99505f',1,'Jacob','Farleigh','56 Bellion Drive','','Yoganup','WA','6275','AUSTRALIA','','(08) 9099 9966','0490999966',NULL,NULL,NULL,0);
 INSERT INTO "person" VALUES(3,'ashleybrowning@example.com','1c6ac33d8cb4a39e44d37b1dd04cf89e','2011-08-22 10:29:35.521165','2011-08-22 00:29:35','ce5279f5b1ebf31583094f8bb22be559',0,'Ashley','Browning','97 Jones Street','','Liena','TAS','7304','AUSTRALIA','','(03) 6280 4734','',NULL,NULL,NULL,0);
 INSERT INTO "person" VALUES(4,'lucaburgmann@example.com','066ed10c6fc9b50931986f75999a0572','2011-08-22 10:40:54.546164','2011-08-22 00:40:54','5983188cff02f43ab2859f6c36470447',1,'Luca','Burgmann','43 Sullivan Court','','RICH AVON WEST','VIC','3480','AUSTRALIA','','(03) 5349 5891','',NULL,NULL,NULL,0);
@@ -56,7 +55,6 @@ INSERT INTO "person_proposal_map" VALUES(10,9);
 INSERT INTO "person_proposal_map" VALUES(10,10);
 INSERT INTO "person_proposal_map" VALUES(10,11);
 INSERT INTO "person_proposal_map" VALUES(11,5);
-INSERT INTO "person_role_map" VALUES(1,1);
 INSERT INTO "person_role_map" VALUES(3,1);
 INSERT INTO "person_role_map" VALUES(2,7);
 INSERT INTO "person_role_map" VALUES(2,2);
@@ -91,12 +89,57 @@ INSERT INTO "registration" VALUES(1,8,1,'emacsman','emacs','emacs','GNU Emacs','
 INSERT INTO "registration" VALUES(2,9,1,'gentoooga','busybox','kate','FreeBSD','mercurial','a hastily non-fungible declaration','','',NULL,'gluten intolerant','','',NULL,'',17,24,'05','announce,chat,linuxaustralia','2011-08-22 05:50:13','2011-08-22 05:50:13');
 INSERT INTO "registration" VALUES(3,11,1,'ssssssssssssssssqwerty','tcsh','emacs','Ubuntu','mercurial','a strangely non-fungible structure','','',NULL,'allergic to peanuts','wheelchair access','',NULL,'',17,24,NULL,'announce','2011-08-22 06:44:38','2011-08-22 06:44:38');
 INSERT INTO "registration" VALUES(4,13,0,'terminatron','zsh','vi','Debian','git','an unquestionably illegal package','','',NULL,'celiac','','',NULL,'',17,24,'10,09','announce,linuxaustralia','2011-08-22 06:51:24','2011-08-22 06:51:24');
-INSERT INTO "role" VALUES(1,'organiser','Organizer',NULL,'Has full access to management pages');
-INSERT INTO "role" VALUES(2,'team','Core Team',NULL,'Member of core team');
-INSERT INTO "role" VALUES(3,'reviewer','Paper Reviewer',NULL,'Has access to the paper review system');
-INSERT INTO "role" VALUES(4,'miniconf','Miniconf Organiser',NULL,'Is a miniconference organiser');
-INSERT INTO "role" VALUES(5,'papers_chair','Papers Chair',NULL,'Has access to paper review system management functions');
-INSERT INTO "role" VALUES(6,'late_submitter','Late Submitter',NULL,'Is allowed to submit paper proposals late');
-INSERT INTO "role" VALUES(7,'funding_reviewer','Funding Reviewer',NULL,'Has access to the funding review system');
-INSERT INTO "role" VALUES(8,'press','Press Pass',NULL,'Members of the press and media who can receive a press ticket');
-INSERT INTO "role" VALUES(9,'miniconfsonly','Miniconfs Only',NULL,'Only gives access to Monday and Tuesday');
+INSERT INTO "db_content" VALUES(1,'Welcome to dev-fixtures',1,'/home','<p>
+This is Zookeepr with some fake data loaded into it to better demonstrate the functionality. You can log in as one of the following users to get a sense of what functionality is available to users with different roles.
+</p>
+<p><b>For each user, unless otherwise specified, the email address which is the login is FirstnameLastname@example.com, and their password is their surname in lowercase.</b>
+</p>
+
+<h3> Admin </h3>
+<p>Login: admin@zookeepr.org / password
+</p>
+<p>
+Role: admin
+</p>
+<h3> Ashley Browning </h3>
+<p>Role: organiser
+</p>
+<h3> Jacob Farleigh </h3>
+<p>Roles: team, funding_reviewer
+</p>
+<h3> Luca Burgmann </h3>
+<p>Role: team
+</p>
+<h3> Mariam McCaughey </h3>
+<p>Roles: team, papers_chair
+</p>
+<h3> Riley Kingsley </h3>
+<p>Roles: team, reviewer (i.e. papers review committee)
+</p>
+<h3> Tony Sims </h3>
+<p>Role: reviewer. Tony has registered.
+</p>
+<h3> Jie Chu </h3>
+<p> Two submitted talks (1 tutorial, 1 talk). Jie has registered.
+</p>
+<h3> Samantha Brennan </h3>
+<p>1 submitted talk. Samantha has registered.
+</p>
+<h3> Nabeeha Noor Samaha </h3>
+<p>(Surname is Samaha) 1 submitted talk. Nabeeha Noor has not registered.
+</p>
+<h3> Antonín Marek </h3>
+<p>Login: AntoninMarek@example.com / password
+<p>
+<p> Roles: miniconf (miniconf organiser). Antonín has registered.
+</p>
+<h3> Vũ Kim Song </h3>
+<p>Role: press. (Surname is Song) Vũ Kim has not registered.
+</p>
+<h3> Jessica Moench </h3>
+<p>Jessica has registered.
+</p>
+<h3> Zak Curtis </h3>
+<p>Zak has only created an account, i.e. has submitted no talks and has not registered.
+</p>
+',1,'2011-08-23 00:45:16','2011-08-23 01:09:41');
