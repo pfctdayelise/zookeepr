@@ -1,0 +1,1 @@
+  <!-- Sponsors on left column -->

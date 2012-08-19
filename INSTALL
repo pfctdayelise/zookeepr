@@ -25,15 +25,15 @@ setup.py against what you have installed.
 
 ### Installing without using a distro's package management ###
 
-This requires Python >=2.6.  Install latest pylons in a development directory: 
+This requires Python >=2.6 and virtualenv.  Install latest pylons in a development directory: 
 
 		cd the-development-directory
-		wget http://www.pylonshq.com/download/0.9.7/go-pylons.py
-		mkdir pylons
-		python go-pylons.py pylons
+		virtualenv pylons
 		alias pylons="source `pwd`/pylons/bin/activate"
 		pylons
 		python setup.py develop
+		
+		(when using paster you may require using ./pylons/bin/paster)
 
 ### Installing using Debian style package management ###
 
@@ -58,12 +58,16 @@ Some Lenny packages are too old.  So on Lenny only, install them from backports:
 
 On all Debian derived distributions, do the following:
 
-		aptitude install python-authkit python-dnspython python-imaging python-pastedeploy python-pylons python-setuptools
+		aptitude install python-authkit python-dnspython python-imaging python-pip \
+			python-pastedeploy python-pylons python-setuptools python-vobject pwgen
 		cd the-development-directory
-		alias pylons="export PYTHONPATH=$PWD/setup-dir"
-		mkdir `pwd`/setup-dir
-		pylons
-		python setup.py develop --no-deps --install-dir=$PYTHONPATH
+		sudo pip install pytz
+
+On Debian wheezy and up:
+		sudo aptitude install python-libravatar
+
+otherwise:
+		sudo pip install libravatar
 
 		Note: on Lenny only it was found that the version of AuthKit supplied in package python-authkit
 		did not work with zookeepr dependencies.  If you see a stacktrace in authkit with the line
@@ -72,13 +76,29 @@ On all Debian derived distributions, do the following:
 
 		sudo easy_install --upgrade AuthKit>=0.4.3
 
-		This is not needed on unstable (Ubunut Lucid)
+		This is not needed on unstable (Ubuntu Lucid)
+
+### Installing using RPM style package management ###
+
+These instructions have been tested on:
+
+  - Fedora 14
+
+Do the following:
+
+	sudo yum install python-pylons pwgen pytz python-vobject python-dns python-sqlalchemy
+	sudo easy_install pylibravatar AuthKit
+	git clone https://github.com/zookeepr/zookeepr.git
+	cd zookeepr
 
 ### PDF generation ###
 
 You need to install the following package for PDF generation to work, e. g.:
 
 		aptitude install inkscape
+
+		Note: This will pull in a base X11 install with client libraries, as well as GTK+
+		and cairo. It will not install the X server.
 
 ### Keysigning code ###
 
@@ -98,7 +118,17 @@ Found at /uml_graph.png (or .svg, .jpeg etc).
 
 ## Installing and setting up Zookeepr ##
 
- - Set up the development environment:
+ - Set up the Pylons environment:
+
+	alias pylons="export PYTHONPATH=$PWD/setup-dir"
+	mkdir $PYTHONPATH
+	pylons
+	python setup.py develop --no-deps --install-dir=$PYTHONPATH
+	cd zookeepr
+
+### Set up the development environment ###
+
+ - Set up the environment:
 
 		cd the-development-directory
 		pylons			# command created by the alias above
@@ -110,6 +140,11 @@ Found at /uml_graph.png (or .svg, .jpeg etc).
  - Create a `config.ini`.
 
 		paster make-config zookeepr config.ini
+
+If the make-config step complains that a package version - e.g. SQLAlchemy -
+is incorrect, and you change setup.py to make it work, you have to run the
+setup.py develop step again (see the Installing and setting up Zookeepr
+section).
 
  - The default `config.ini` uses sqlite, which is fine for development.  To use a different SQL backend edit `dburi`.
 
@@ -123,7 +158,7 @@ Found at /uml_graph.png (or .svg, .jpeg etc).
  
 ## Running Zookeepr ##
 
- - Set up the development environment:
+ - Set up the environment:
 
 		cd the-development-directory
 		pylons			# command created by the alias above
