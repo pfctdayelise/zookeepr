@@ -1,13 +1,22 @@
       <p><label for="product.description">Description:</label><br>
       ${ h.text('product.description') }</p>
 
+      <p><label for="product.badge_text">Badge Text:</label><br>
+      ${ h.text('product.badge_text') }</p>
+
       <p>
         <label for="product.category">Category</label>
-        <select id="product.category" name="product.category">
-% for category in c.product_categories:
-          <option value="${category.id}">${ category.name }</option>
-% endfor
-        </select>
+        ${ h.select('product.category', None, [(category.id, category.name) for category in c.product_categories], prompt='Select a category') }
+      </p>
+
+      <p>
+        <label for="product.fulfilment_type">Fulfilment Type</label>
+        ${ h.select('product.fulfilment_type', None, [(type.id, type.name) for type in c.fulfilment_types], prompt='Select a fulfilment type') }
+      </p>
+
+      <p>
+        <label for="product.display_order">Display Order:</label>
+        ${ h.text('product.display_order') }
       </p>
 
       <p>

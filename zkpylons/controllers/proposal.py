@@ -31,7 +31,7 @@ class NewPersonSchema(BaseSchema):
 
     experience = validators.String(not_empty=True)
     bio = validators.String(not_empty=True)
-    url = validators.String()
+    url = validators.URL(add_http=True, check_exists=False, not_empty=False)
     mobile = validators.String(not_empty=True)
 
 class ExistingPersonSchema(BaseSchema):
@@ -39,7 +39,7 @@ class ExistingPersonSchema(BaseSchema):
 
     experience = validators.String(not_empty=True)
     bio = validators.String(not_empty=True)
-    url = validators.String()
+    url = validators.URL(add_http=True, check_exists=False, not_empty=False)
     mobile = validators.String(not_empty=True)
 
 class ProposalSchema(BaseSchema):
@@ -54,8 +54,8 @@ class ProposalSchema(BaseSchema):
     accommodation_assistance = AccommodationAssistanceTypeValidator()
     travel_assistance = TravelAssistanceTypeValidator()
     project = validators.String()
-    url = validators.String()
-    abstract_video_url = validators.String()
+    url = validators.URL(add_http=True, check_exists=False, not_empty=False)
+    abstract_video_url = validators.URL(add_http=True, check_exists=False, not_empty=False)
     video_release = validators.Bool()
     slides_release = validators.Bool()
 
@@ -140,7 +140,7 @@ class ProposalController(BaseController):
         proposal_results = self.form_result['proposal']
         attachment_results = self.form_result['attachment']
 
-        proposal_results['status'] = ProposalStatus.find_by_name('Pending')
+        proposal_results['status'] = ProposalStatus.find_by_name('Pending Review')
 
         c.proposal = Proposal(**proposal_results)
         c.proposal.abstract = self.clean_abstract(c.proposal.abstract)
@@ -425,7 +425,7 @@ class ProposalController(BaseController):
         c.person = h.signed_in_person()
 
         # Make sure the organisers are notified of this
-        c.email_address = h.lca_info['emails'][c.proposal.type.name.lower()]
+        c.email_address = c.proposal.type.notify_email.lower()
         email(c.email_address, render('/proposal/withdraw_email.mako'))
 
         h.flash("Proposal withdrawn. The organisers have been notified.")

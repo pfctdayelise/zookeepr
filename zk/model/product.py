@@ -320,8 +320,8 @@ def setup(meta):
     product.ceilings.append(ceiling_accom_selfbook)
     meta.Session.add(product);
 
-    # Partner's Programme
-    category_partners = ProductCategory.find_by_name('Partners Programme')
+    # Partners' Programme
+    category_partners = ProductCategory.find_by_name('Partners\' Programme')
     ceiling_partners_all = Ceiling.find_by_name('partners-all')
 
     partners_adult = Product(category=category_partners, active=True, description="Adult", cost="23500", auth=None, validate="PPDetails(adult_field='product_Partners Programme_Adult_qty', email_field='partner_email', name_field='partner_name', mobile_field='partner_mobile')")
@@ -381,15 +381,19 @@ class Product(Base):
 
     id = sa.Column(sa.types.Integer, primary_key=True)
     category_id = sa.Column(sa.types.Integer, sa.ForeignKey('product_category.id', ondelete='CASCADE', onupdate='CASCADE'), nullable=True)
+    fulfilment_type_id = sa.Column(sa.types.Integer, sa.ForeignKey('fulfilment_type.id'), nullable=True)
+    display_order = sa.Column(sa.types.Integer, nullable=False)
     active = sa.Column(sa.types.Boolean, nullable=False)
     description = sa.Column(sa.types.Text, nullable=False)
+    badge_text = sa.Column(sa.types.Text, nullable=True)
     cost = sa.Column(sa.types.Integer, nullable=False)
     auth = sa.Column(sa.types.Text, nullable=True)
     validate = sa.Column(sa.types.Text, nullable=True)
 
     # relations
-    ceilings = sa.orm.relation(Ceiling, secondary=product_ceiling_map, lazy=True, backref='products')
-    category = sa.orm.relation(ProductCategory, lazy=True, backref='products')
+    category = sa.orm.relation(ProductCategory, lazy=True, backref=sa.orm.backref('products', order_by=lambda: [Product.display_order, Product.cost]))
+    ceilings = sa.orm.relation(Ceiling, secondary=product_ceiling_map, lazy=True, order_by=Ceiling.name, backref='products')
+    fulfilment_type = sa.orm.relation('FulfilmentType')
 
 
     def __init__(self, **kwargs):
@@ -397,7 +401,7 @@ class Product(Base):
 
     @classmethod
     def find_all(self):
-        return Session.query(Product).order_by(Product.cost).all()
+        return Session.query(Product).order_by(Product.display_order).order_by(Product.cost).all()
 
     @classmethod
     def find_by_id(cls, id):
@@ -405,26 +409,20 @@ class Product(Base):
 
     @classmethod
     def find_by_category(cls, id):
-        return Session.query(Product).filter_by(category_id=id)
+        return Session.query(Product).filter_by(category_id=id).order_by(Product.display_order).order_by(Product.cost)
 
     def qty_free(self):
         qty = 0
         for ii in self.invoice_items:
-            if not ii.invoice.void and ii.invoice.paid():
-                if self.category.name == 'Accommodation':
-                    qty += 1
-                else:
-                    qty += ii.free_qty
+            if not ii.invoice.void and ii.invoice.is_paid:
+                qty += ii.free_qty
         return qty
 
     def qty_sold(self):
         qty = 0
         for ii in self.invoice_items:
-            if not ii.invoice.void and ii.invoice.paid():
-                if self.category.name == 'Accommodation':
-                    qty += 1
-                else:
-                    qty += (ii.qty - ii.free_qty)
+            if not ii.invoice.void and ii.invoice.is_paid:
+                qty += (ii.qty - ii.free_qty)
         return qty
 
     def qty_invoiced(self, date=True):
@@ -432,11 +430,8 @@ class Product(Base):
         qty = 0
         for ii in self.invoice_items:
             # also count sold items as invoiced since they are valid
-            if not ii.invoice.void and ((ii.invoice.paid() or not ii.invoice.overdue() or not date)):
-                if self.category.name == 'Accommodation':
-                    qty += 1
-                else:
-                    qty += ii.qty
+            if not ii.invoice.void and ((ii.invoice.is_paid or not ii.invoice.is_overdue or not date)):
+                qty += ii.qty
         return qty
 
     def remaining(self):
@@ -476,9 +471,9 @@ class Product(Base):
 
     def clean_description(self, category=False):
         if category == True:
-            return self.category.clean_name() + '_' + self.description.replace('-','_')
+            return self.category.clean_name() + '_' + self.description.replace('-','_').replace("'",'')
         else:
-            return self.description.replace('-','_');
+            return self.description.replace('-','_').replace("'",'');
 
     def __repr__(self):
         return '<Product id=%r active=%r description=%r cost=%r auth=%r validate%r>' % (self.id, self.active, self.description, self.cost, self.auth, self.validate)

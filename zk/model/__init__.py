@@ -18,10 +18,12 @@ import invoice
 import invoice_item
 import payment
 import ceiling
+import fulfilment
 import product
 import product_ceiling_map
 import rego_note
 import social_network
+import travel
 import person_social_network_map
 import funding
 import funding_attachment
@@ -41,6 +43,7 @@ from social_network import SocialNetwork
 from proposal import Proposal, ProposalStatus, ProposalType, TravelAssistanceType, AccommodationAssistanceType, TargetAudience
 from attachment import Attachment
 from review import Review, Stream
+from travel import Travel
 from funding import Funding, FundingType, FundingStatus
 from funding_attachment import FundingAttachment
 from funding_review import FundingReview
@@ -54,6 +57,8 @@ from invoice import Invoice
 from invoice_item import InvoiceItem
 from payment import Payment
 from payment_received import PaymentReceived
+
+from fulfilment import Fulfilment, FulfilmentItem, FulfilmentType, FulfilmentStatus, FulfilmentGroup
 
 from registration import Registration
 from registration_product import RegistrationProduct

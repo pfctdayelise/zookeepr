@@ -10,6 +10,9 @@
     <h2>View ceiling</h2>
 
     <p><b>Name:</b> ${ c.ceiling.name } - ${ h.link_to('Special cases', url=h.url_for(action='special_cases')) }</p>
+% if c.ceiling.parent:
+    <p><b>Parent:</b> ${ h.link_to(c.ceiling.parent.name, h.url_for(id=c.ceiling.parent.id)) } (This ceiling will not become available until the parent is not available)
+% endif
     <p><b>Limit:</b> ${ c.ceiling.max_sold | h }<br></p>
     <p>
       <b>Available From:</b>
@@ -62,12 +65,12 @@
         <td>${ h.link_to(product.description, url=h.url_for(controller='product', action='view', id=product.id)) }</td>
         <td>${ product.category.name }</td>
         <td>${ h.yesno(product.active) | n }</td>
-        <td>${ h.number_to_currency(product.cost/100.0) }</td>
+        <td>${ h.integer_to_currency(product.cost) }</td>
         <td>${ product.qty_invoiced(date=False) }</td>
         <td>${ product.qty_invoiced() }</td>
         <td>${ product.qty_sold() }</td>
         <td>${ product.qty_free() }</td>
-        <td>${ h.number_to_currency((product.qty_sold() * product.cost)/100) }</td>
+        <td>${ h.integer_to_currency(product.qty_sold() * product.cost) }</td>
       </tr>
 <%
   graph_invoiced_sales[product.description] = product.qty_invoiced(date=False)
@@ -79,7 +82,7 @@
         <td>${ c.ceiling.qty_invoiced()  }</td>
         <td>${ c.ceiling.qty_sold()  }</td>
         <td>${ c.ceiling.qty_free()  }</td>
-        <td>${ h.number_to_currency(ceiling_total/100) }</td>
+        <td>${ h.integer_to_currency(ceiling_total) }</td>
     </table>
 <script type="text/javascript">
 <%
@@ -129,13 +132,13 @@
       </tr></thead>
 % for product in c.ceiling.products:
 %   for invoice_item in product.invoice_items:
-%        if invoice_item.invoice.paid():
+%        if invoice_item.invoice.is_paid:
       <tr>
         <td>${ h.link_to('id: ' + str(invoice_item.invoice.id), url=h.url_for(controller='invoice', action='view', id=invoice_item.invoice.id)) }</td>
         <td>${ h.link_to(invoice_item.invoice.person.firstname + ' ' + invoice_item.invoice.person.lastname, h.url_for(controller='person', action='view', id=invoice_item.invoice.person.id)) }</td>
         <td>${ invoice_item.description }</td>
         <td>${ invoice_item.qty }</td>
-        <td>${ invoice_item.invoice.status() }</td>
+        <td>${ invoice_item.invoice.status }</td>
       </tr>
 %        endif
 %   endfor
@@ -154,13 +157,13 @@
       </tr></thead>
 % for product in c.ceiling.products:
 %   for invoice_item in product.invoice_items:
-%        if not invoice_item.invoice.is_void() and not invoice_item.invoice.paid():
+%        if not invoice_item.invoice.is_void and not invoice_item.invoice.is_paid:
       <tr>
         <td>${ h.link_to('id: ' + str(invoice_item.invoice.id), url=h.url_for(controller='invoice', action='view', id=invoice_item.invoice.id)) }</td>
         <td>${ h.link_to(invoice_item.invoice.person.firstname + ' ' + invoice_item.invoice.person.lastname, h.url_for(controller='person', action='view', id=invoice_item.invoice.person.id)) }</td>
         <td>${ invoice_item.description }</td>
         <td>${ invoice_item.qty }</td>
-        <td>${ invoice_item.invoice.status() }</td>
+        <td>${ invoice_item.invoice.status }</td>
       </tr>
 %        endif
 %   endfor
@@ -179,13 +182,13 @@
       </tr></thead>
 % for product in c.ceiling.products:
 %   for invoice_item in product.invoice_items:
-%        if not invoice_item.invoice.paid() and invoice_item.invoice.is_void():
+%        if not invoice_item.invoice.is_paid and invoice_item.invoice.is_void:
       <tr>
         <td>${ h.link_to('id: ' + str(invoice_item.invoice.id), url=h.url_for(controller='invoice', action='view', id=invoice_item.invoice.id)) }</td>
         <td>${ h.link_to(invoice_item.invoice.person.firstname + ' ' + invoice_item.invoice.person.lastname, h.url_for(controller='person', action='view', id=invoice_item.invoice.person.id)) }</td>
         <td>${ invoice_item.description }</td>
         <td>${ invoice_item.qty }</td>
-        <td>${ invoice_item.invoice.status() }</td>
+        <td>${ invoice_item.invoice.status }</td>
       </tr>
 %        endif
 %   endfor

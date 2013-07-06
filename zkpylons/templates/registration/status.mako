@@ -17,7 +17,7 @@
 % if h.lca_info['conference_status'] == 'open' and c.ceilings['conference-earlybird'].available() and c.ceilings['conference-paid'].available():
       <b>Earlybird</b> registrations are currently available! Only a limited number of Earlybird registrations are available however so be sure to pay before they're all gone.<br />
       Earlybird sales status:<br />
-      
+
       <div class="graph-bar-sold" style = "width:${ h.number_to_percentage(c.ceilings['conference-earlybird'].percent_invoiced())}; text-align:center">
 % if c.ceilings['conference-earlybird'].percent_invoiced() > 10: #Only display the Sold text if there is enough room
       Sold (${ h.number_to_percentage(c.ceilings['conference-earlybird'].percent_invoiced()) })
@@ -25,13 +25,13 @@
       </div>
       <div class="graph-bar-available" style = "width:${ h.number_to_percentage(100-c.ceilings['conference-earlybird'].percent_invoiced()) }; text-align:center">
 % if c.ceilings['conference-earlybird'].percent_invoiced() < 85: #Only display the Available text if there is room
-      Available 
+      Available
 % endif
       (${ h.number_to_percentage(100-c.ceilings['conference-earlybird'].percent_invoiced()) })
       </div>
 
 % elif h.lca_info['conference_status'] == 'open' and c.ceilings['conference-paid'].available() and not c.ceilings['conference-earlybird'].available():
-      
+
       <div class="graph-bar-sold" style = "width:${ h.number_to_percentage(c.ceilings['conference-paid'].percent_invoiced())}; text-align:center">
 % if c.ceilings['conference-paid'].percent_invoiced() > 10: #Only display the Sold text if there is enough room
       Sold (${ h.number_to_percentage(c.ceilings['conference-paid'].percent_invoiced()) })
@@ -112,7 +112,7 @@
     ${ h.link_to('Change volunteer areas of interest', h.url_for(controller='volunteer', action='edit', id=c.person.volunteer.id)) }<br>
 %   endif
     ${ h.link_to('Edit details', h.url_for(action='edit', id=c.registration.id)) }<br>
-%   if c.person.valid_invoice() and c.person.valid_invoice().paid():
+%   if c.person.valid_invoice() and c.person.valid_invoice().is_paid:
     ${ h.link_to('View invoice', h.url_for(controller='invoice', action='view', id=c.person.valid_invoice().id)) }<br>
 %   else:
     ${ h.link_to('Pay invoice', h.url_for(action='pay', id=c.registration.id)) }<br>
@@ -128,8 +128,8 @@
 %   for invoice in c.person.invoices:
       <tr>
         <td>${ h.link_to(invoice.id, h.url_for(controller='invoice', action='view', id=invoice.id)) }</td>
-        <td>${ invoice.status() }</td>
-        <td>${ h.number_to_currency(invoice.total() / 100) }</td>
+        <td>${ invoice.status }</td>
+        <td>${ h.integer_to_currency(invoice.total) }</td>
         <td>
           ${ h.link_to('View', h.url_for(controller='invoice', action='view', id=invoice.id)) } - Print
           ${ h.link_to('html', h.url_for(controller='invoice', action='printable', id=invoice.id)) },
@@ -139,7 +139,7 @@
 %   endfor
     </table>
 
-% elif False and c.person.invoices[0].bad_payments().count() > 0:
+% elif False and len(c.person.invoices[0].bad_payments) > 0:
     <p><b>Tentatively registered and tried to pay.</b></p>
 
     <p>Unfortunately, there was some sort of problem with your payment.</p>
@@ -175,6 +175,6 @@
 % endif
 
 <%def name="title()" >
-Registration Status - ${ c.person.fullname() } - ${ parent.title() }
+Registration Status - ${ c.person.fullname } - ${ parent.title() }
 </%def>
 

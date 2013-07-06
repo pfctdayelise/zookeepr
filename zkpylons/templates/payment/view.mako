@@ -36,7 +36,7 @@
 <td><font color="red">None found</font></td>
 %else:
 <td>${ h.link_to(c.payment.invoice.id, url=h.url_for(controller='invoice', action='view', id=c.payment.invoice.id)) }
-(${ c.payment.invoice.status() })
+(${ c.payment.invoice.status })
 %  if c.payment.payment not in c.payment.invoice.payments:
 <font color="red">(INVALID)</font>
 %  endif
@@ -44,7 +44,7 @@
 %endif
 
 <tr><td valign="top"><b>Amount paid:</b></td>
-<td>${ h.number_to_currency(c.payment.amount_paid / 100.0) } (charged in ${ c.payment.currency_used })</td></tr>
+<td>${ h.integer_to_currency(c.payment.amount_paid) } (charged in ${ c.payment.currency_used })</td></tr>
 
 <tr><td valign="top"><b>Payment gateway:</b></td>
 <td>Auth: ${ c.payment.auth_code }

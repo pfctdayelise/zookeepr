@@ -41,7 +41,7 @@ def make_map(config):
     # Schedule
     map.connect('/programme/schedule',                controller='schedule', action='table', day=None)
     map.connect('/programme/schedule/ical',           controller='schedule', action='ical')
-    map.connect('/programme/schedule/json',           controller='schedule', action='json1')
+    map.connect('/programme/schedule/json',           controller='schedule', action='json')
     map.connect('/programme/schedule/{day}',          controller='schedule', action='table', day=None)
     map.connect('/programme/schedule/view_talk/{id}', controller='schedule', action='table_view', id=None)
     map.connect('/programme/schedule/video',          controller='schedule', action='video_room', room=None)
@@ -67,6 +67,8 @@ def make_map(config):
     # registration and invoicing
     map.connect('/invoice/{id}/pdf',               controller='invoice', action='pdf', id=None)
     map.connect('/invoice/remind',                 controller='invoice', action='remind', id=None)
+    map.connect('/invoice/save_new_invoice',       controller='invoice', action='save_new_invoice', id=None)
+    map.connect('/invoice/pay_invoice',            controller='invoice', action='pay_invoice', id=None)
     map.connect('/registration/remind',            controller='registration', action='remind', id=None)
     map.connect('/register/status',                controller='registration', action='status')
     map.connect('/registration/silly_description', controller='registration', action='silly_description')
@@ -93,6 +95,8 @@ def make_map(config):
     # product
     map.connect('/product/new/{cat_id}', controller='product', action='new')
 
+    # checkin
+    map.connect('/checkin/{action}', controller='checkin')
 
     # admin controller
     map.connect('/admin/{action}', controller='admin')

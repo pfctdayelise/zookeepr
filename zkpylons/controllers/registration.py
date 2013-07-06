@@ -14,7 +14,7 @@ from formencode.variabledecode import NestedVariables
 from zkpylons.lib.base import BaseController, render
 from zkpylons.lib.ssl_requirement import enforce_ssl
 from zkpylons.lib.validators import BaseSchema, DictSet, ProductInCategory, CheckboxQty
-from zkpylons.lib.validators import ProductQty, ProductMinMax, IAgreeValidator
+from zkpylons.lib.validators import ProductQty, ProductMinMax, IAgreeValidator, CountryValidator
 
 # validators used from the database
 from zkpylons.lib.validators import ProDinner, PPDetails, PPChildrenAdult
@@ -98,8 +98,8 @@ class ExistingPersonSchema(BaseSchema):
     address2 = validators.String()
     city = validators.String(not_empty=True)
     state = validators.String()
-    postcode = validators.String(not_empty=True)
-    country = validators.String(not_empty=True)
+    postcode = validators.String(not_empty=True, min=3, max=10)
+    country = CountryValidator(not_empty=True)
     i_agree = validators.Bool(if_missing=False)
     chained_validators = [IAgreeValidator("i_agree")]
 
@@ -169,8 +169,8 @@ class RegistrationController(BaseController):
 
     def _able_to_edit(self):
         for invoice in h.signed_in_person().invoices:
-            if not invoice.is_void():
-                if invoice.paid() and invoice.total() != 0:
+            if not invoice.is_void:
+                if invoice.is_paid and invoice.total != 0:
                     return False, "Sorry, you've already paid. Contact the team at " + h.lca_info['contact_email'] + " if you need anything changed."
         return True, "You can edit"
 
@@ -320,7 +320,7 @@ class RegistrationController(BaseController):
             if not h.auth.authorized(h.auth.has_organiser_role):
                 redirect_to(action='status')
             else:
-                # User is an organiser, so if the status is also 'debug' then they can register 
+                # User is an organiser, so if the status is also 'debug' then they can register
                 if lca_info['conference_status'] is not 'debug':
                     redirect_to(action='status')
 
@@ -477,7 +477,10 @@ class RegistrationController(BaseController):
             defaults['registration.vcstext'] = c.registration.vcs
 
         form = render('/registration/edit.mako')
-        return htmlfill.render(form, defaults)
+        if c.form_errors:
+            return form
+        else:
+            return htmlfill.render(form, defaults)
 
     @validate(schema=edit_schema, form='edit', post_only=True, on_get=True, variable_decode=True)
     def _edit(self, id):
@@ -501,7 +504,7 @@ class RegistrationController(BaseController):
     def save_details(self, result):
         # Store Registration details
         for k in result['registration']:
-            if k in ('shell', 'editor', 'distro'):
+            if k in ('shell', 'editor', 'distro', 'vcs'):
                 if result['registration'][k] == 'other':
                     setattr(c.registration, k, result['registration'][k + 'text'])
                 else:
@@ -624,7 +627,7 @@ class RegistrationController(BaseController):
             # complicated check to see whether invoice is already in the system
             new_invoice = invoice
             for old_invoice in registration.person.invoices:
-                if old_invoice != new_invoice and not old_invoice.manual and not old_invoice.is_void():
+                if old_invoice != new_invoice and not old_invoice.manual and not old_invoice.is_void:
                     if self.invoices_identical(old_invoice, new_invoice):
                         invoice = old_invoice
                         if not quiet:
@@ -645,7 +648,7 @@ class RegistrationController(BaseController):
 
     def check_invoices(self, invoices):
         for invoice in invoices:
-            if not invoice.is_void() and not invoice.manual and not invoice.paid():
+            if not invoice.is_void and not invoice.manual and not invoice.is_paid:
                 for ii in invoice.items:
                     if ii.product and not self._product_available(ii.product, True, ii.qty):
                         invoice.void = "Product " + ii.product.category.name + " - " + ii.product.description + " is no longer available"
@@ -653,12 +656,12 @@ class RegistrationController(BaseController):
 
     def manual_invoice(self, invoices):
         for invoice in invoices:
-            if not invoice.is_void() and invoice.manual:
+            if not invoice.is_void and invoice.manual:
                 return True
         return False
 
     def invoices_identical(self, invoice1, invoice2):
-        if invoice1.total() == invoice2.total():
+        if invoice1.total == invoice2.total:
             if len(invoice1.items) == len(invoice2.items):
                 matched_products = 0
                 invoice1_matched_items = dict()
@@ -781,9 +784,6 @@ class RegistrationController(BaseController):
     @authorize(h.auth.has_organiser_role)
     def index(self):
         per_page = 20
-        #from zkpylons.model.core import tables as core_tables
-        #from zkpylons.model.registration import tables as registration_tables
-        #from zkpylons.model.proposal import tables as proposal_tables
         from webhelpers import paginate #Upgrade to new paginate
 
         filter = dict(request.GET)
@@ -841,11 +841,13 @@ class RegistrationController(BaseController):
                     registration_list.remove(registration)
                 elif filter.has_key('manual_invoice') and filter['manual_invoice'] == 'true' and not (True in [invoice.manual for invoice in registration.person.invoices]):
                     registration_list.remove(registration)
+                elif filter.has_key('not_australian') and filter['not_australian'] == 'true' and registration.person.country == "AUSTRALIA":
+                    registration_list.remove(registration)
                 elif len(filter['product']) > 0 and 'all' not in filter['product']:
                     # has to be done last as it is an OR not an AND
                     valid_invoices = []
                     for invoice in registration.person.invoices:
-                        if not invoice.is_void():
+                        if not invoice.is_void:
                             valid_invoices.append(invoice)
                     if len(set([int(id) for id in filter['product']]) & set([x for subL in [[item.product_id for item in invoice.items] for invoice in valid_invoices] for x in subL])) == 0:
                        registration_list.remove(registration)
@@ -891,10 +893,16 @@ class RegistrationController(BaseController):
                     accommodation.append(product.product.description)
 
             for invoice in registration.person.invoices:
-                if invoice.paid() and not invoice.is_void():
+                if invoice.is_paid and not invoice.is_void:
                     invoices.append(str(invoice.id))
                     for item in invoice.items:
                         products.append(str(item.qty) + "x" + item.description)
+
+            # Hack to fix mising fields
+            if not registration.nick:
+                registration.nick = ''
+            if not registration.silly_description:
+                registration.silly_description = ''
 
             data.append([registration.id,
                          registration.person.firstname.encode('utf-8'),
@@ -965,7 +973,7 @@ class RegistrationController(BaseController):
                             append = True
                         else:
                             for invoice in registration.person.invoices:
-                                if invoice.paid() and not invoice.is_void():
+                                if invoice.is_paid and not invoice.is_void:
                                     for item in invoice.items:
                                         if defaults['type'] == 'concession' and item.description.startswith('Concession'):
                                             append = True
@@ -1026,7 +1034,7 @@ class RegistrationController(BaseController):
             pdns_ticket = False
             ticket = ''
             for invoice in registration.person.invoices:
-                if invoice.paid() and not invoice.is_void():
+                if invoice.is_paid and not invoice.is_void:
                     for item in invoice.items:
                         if item.description.startswith('Penguin Dinner'):
                             dinner_tickets += item.qty
@@ -1133,7 +1141,7 @@ class RegistrationController(BaseController):
         for r in registration_list:
             is_prof = False
             for invoice in r.person.invoices:
-                if invoice.paid() and not invoice.is_void():
+                if invoice.is_paid and not invoice.is_void:
                     if r.person.is_speaker() or r.person.is_miniconf_org():
                         is_prof = True
                     else:
@@ -1146,7 +1154,7 @@ class RegistrationController(BaseController):
                      c.profs[r.person.company] = {}
                 if r.person.lastname not in c.profs[r.person.company]:
                     c.profs[r.person.company][r.person.lastname] = []
-                c.profs[r.person.company][r.person.lastname].append(r.person.fullname())
+                c.profs[r.person.company][r.person.lastname].append(r.person.fullname)
 
         response.headers['Content-type']='text/plain; charset=utf-8'
         return render('/registration/professionals_latex.mako')
@@ -1160,6 +1168,6 @@ class RegistrationController(BaseController):
                      c.profs[r.person.company] = {}
                 if r.person.lastname not in c.profs[r.person.company]:
                     c.profs[r.person.company][r.person.lastname] = []
-                c.profs[r.person.company][r.person.lastname].append(r.person.fullname())
+                c.profs[r.person.company][r.person.lastname].append(r.person.fullname)
 
         response.headers['Content-type']='text/plain; charset=utf-8'

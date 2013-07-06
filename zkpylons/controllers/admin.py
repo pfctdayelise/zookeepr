@@ -1,6 +1,6 @@
 import logging
 
-from pylons import request, response, session, tmpl_context as c
+from pylons import request, response, session, tmpl_context as c, app_globals
 from zkpylons.lib.helpers import redirect_to
 from pylons.decorators import validate
 from pylons.decorators.rest import dispatch_on
@@ -17,6 +17,8 @@ from authkit.permissions import ValidAuthKitUser
 
 from zkpylons.model import meta, Person, Product, Registration, ProductCategory
 from zkpylons.model import Proposal, ProposalType, ProposalStatus, Invoice, Funding
+from zkpylons.model import Event, Schedule, TimeSlot, Location
+from zkpylons.model import Fulfilment, FulfilmentItem, FulfilmentType, FulfilmentStatus, FulfilmentGroup
 from zkpylons.model.funding_review import FundingReview
 from zkpylons.model.payment_received import PaymentReceived
 from zkpylons.model.invoice_item import InvoiceItem
@@ -29,7 +31,7 @@ from zkpylons.config.lca_info import lca_info, lca_rego
 
 from zkpylons.lib.ssl_requirement import enforce_ssl
 
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, func
 
 log = logging.getLogger(__name__)
 
@@ -46,7 +48,7 @@ class AdminController(BaseController):
 
     @enforce_ssl(required_all=True)
     def __before__(self, **kwargs):
-        pass
+        c.signed_in_person = h.signed_in_person()
 
     @authorize(h.auth.has_organiser_role)
     def index(self):
@@ -424,6 +426,15 @@ class AdminController(BaseController):
         return render('/admin/text.mako')
 
     @authorize(h.auth.has_organiser_role)
+    def silly_description_checksum(self):
+        """ Generate the checksum for a given silly_description [Registrations] """
+        if request.GET:
+            if request.GET['silly_description']:
+                c.silly_description = request.GET['silly_description']
+                c.silly_description_checksum = h.silly_description_checksum(c.silly_description)
+        return render('/admin/silly_description_checksum.mako')
+
+    @authorize(h.auth.has_organiser_role)
     def registered_followup(self):
         """ CSV export of registrations for mail merges [Registrations] """
         c.data = []
@@ -437,7 +448,7 @@ class AdminController(BaseController):
 
           row = []
           row.append(str(r.person.id))
-          row.append(r.person.fullname())
+          row.append(r.person.fullname)
           row.append(r.person.firstname)
           row.append(r.person.email_address)
           row.append(r.person.country)
@@ -469,70 +480,63 @@ class AdminController(BaseController):
         c.data = []
         c.noescape = True
         cons_list = ('video_release', 'slides_release')
-        speaker_list = []
-        for p in meta.Session.query(Person).all():
-            if not p.is_speaker(): continue
-            speaker_list.append((p.lastname.lower()+' '+p.firstname, p))
-        speaker_list.sort()
+        speaker_list = [p for p in meta.Session.query(Person).order_by(Person.lastname, Person.firstname).all() if p.is_speaker() or p.is_miniconf_org()]
 
-        for (sortkey, p) in speaker_list:
-            registration_link = ''
+        for p in speaker_list:
+            res = []
+            res.append(h.link_to(p.fullname, url=h.url_for(controller='person', action='view', id=p.id)))
+            res.append(h.link_to(p.email_address, url='mailto:' + p.email_address))
+            res.append('; '.join([h.link_to(h.truncate(t.title), url=h.url_for(controller='schedule', action='view_talk', id=t.id)) for t in p.proposals if t.accepted]))
             if p.registration:
-                registration_link = '<a href="/registration/%d">Details</a>, ' % (p.registration.id)
-            res = [
-      '<a href="/person/%d">%s %s</a> (%s<a href="mailto:%s">email</a>)'
-                  % (p.id, p.firstname, p.lastname, registration_link, p.email_address)
-            ]
-
-            talks = [talk for talk in p.proposals if talk.accepted]
-            res.append('; '.join([
-                '<a href="/programme/schedule/view_talk/%d">%s</a>'
-                                % (t.id, h.truncate(t.title)) for t in talks]))
-            if p.registration:
-              if p.invoices:
-                if p.valid_invoice() is None:
-                    res.append('Invalid Invoice')
-                else:
-                    if p.valid_invoice().paid():
-                      res.append('<a href="/invoice/%d">Paid $%.2f</a>'%(
-                               p.valid_invoice().id, p.valid_invoice().total()/100.0) )
+                res.append(h.link_to(p.registration.id, url=h.url_for(controller='registration', action='view', id=p.registration.id)))
+                if p.invoices:
+                    if p.valid_invoice() is None:
+                        res.append('Invalid Invoice')
                     else:
-                      res.append('<a href="/invoice/%d">Owes $%.2f</a>'%(
-                               p.valid_invoice().id, p.valid_invoice().total()/100.0) )
+                        if p.valid_invoice().is_paid:
+                            res.append(h.link_to('Paid ' + h.integer_to_currency(p.valid_invoice().total),
+                                           url=h.url_for(controller='invoice', action='view', id=p.valid_invoice().id)))
+                        else:
+                            res.append(h.link_to('Owes ' + h.integer_to_currency(p.valid_invoice().total),
+                                           url=h.url_for(controller='invoice', action='view', id=p.valid_invoice().id)))
 
-                    shirt = ''
-                    for item in p.valid_invoice().items:
-                        if ((item.description.lower().find('shirt') is not -1) and (item.description.lower().find('discount') is -1)):
-                            shirt += item.description + ', '
-                            if shirt_totals.has_key(item.description):
-                                shirt_totals[item.description] += 1
-                            else:
-                                shirt_totals[item.description] = 1
-                    res.append(shirt)
-              else:
-                res.append('No Invoice')
-                res.append('-')
+                        shirt = ''
+                        for item in p.valid_invoice().items:
+                            if ((item.description.lower().find('shirt') is not -1) and (item.description.lower().find('discount') is -1)):
+                                shirt += item.description + ', '
+                                if shirt_totals.has_key(item.description):
+                                    shirt_totals[item.description] += 1
+                                else:
+                                    shirt_totals[item.description] = 1
+                        res.append(shirt)
+                else:
+                    res.append('No Invoice')
+                    res.append('-')
 
-              consents = []
-              for t in talks:
-                  cons = [con.replace('_', ' ') for con in cons_list
-                                               if getattr(t, con)]
-                  if len(cons)==len(cons_list):
-                    consents.append('Release All')
-                  elif len(cons)==0:
-                    consents.append('None')
-                  else:
-                    consents.append(' and '.join(cons))
-              res.append(';'.join(consents))
-
-              res.append('<br><br>'.join(["<b>Note by <i>" + n.by.firstname + " " + n.by.lastname + "</i> at <i>" + n.last_modification_timestamp.strftime("%Y-%m-%d&nbsp;%H:%M") + "</i>:</b><br>" + h.line_break(n.note) for n in p.registration.notes]))
-              if p.registration.diet:
-                  res[-1] += '<br><br><b>Diet:</b> %s' % (p.registration.diet)
-              if p.registration.special:
-                  res[-1] += '<br><br><b>Special Needs:</b> %s' % (p.registration.special)
             else:
-              res+=['Not Registered', '', '', '']
-            #res.append(`dir(p.registration)`)
+                res+=['Not Registered', '', '']
+
+            consents = []
+            talks = [talk for talk in p.proposals if talk.accepted]
+            for t in talks:
+                cons = [con.replace('_', ' ') for con in cons_list if getattr(t, con)]
+                if len(cons)==len(cons_list):
+                    consents.append('Release All')
+                elif len(cons)==0:
+                    consents.append('None')
+                else:
+                    consents.append(' and '.join(cons))
+            res.append(';'.join(consents))
+
+            if p.registration:
+                res.append('<br><br>'.join(["<b>Note by <i>" + n.by.firstname + " " + n.by.lastname + "</i> at <i>" + n.last_modification_timestamp.strftime("%Y-%m-%d&nbsp;%H:%M") + "</i>:</b><br>" + h.line_break(n.note) for n in p.registration.notes]))
+                if p.registration.diet:
+                    res[-1] += '<br><br><b>Diet:</b> %s' % (p.registration.diet)
+                if p.registration.special:
+                    res[-1] += '<br><br><b>Special Needs:</b> %s' % (p.registration.special)
+            else:
+                res.append('')
+
             c.data.append(res)
 
         # sort by rego status (while that's important)
@@ -540,7 +544,7 @@ class AdminController(BaseController):
             return cmp(a[2], b[2])
         c.data.sort(my_cmp)
 
-        c.columns = ('Name', 'Talk(s)', 'Status', 'Shirts', 'Concent', 'Notes')
+        c.columns = ('Name', 'Email', 'Talk(s)', 'Registration', 'Status', 'Shirts', 'Concent', 'Notes')
         c.text = "<p>Shirt Totals:"
         for key, value in shirt_totals.items():
             c.text += "<br>" + str(key) + ": " + str(value)
@@ -575,12 +579,12 @@ class AdminController(BaseController):
                 if p.valid_invoice() is None:
                     res.append('Invalid Invoice')
                 else:
-                    if p.valid_invoice().paid():
-                      res.append('<a href="/invoice/%d">Paid $%.2f</a>'%(
-                               p.valid_invoice().id, p.valid_invoice().total()/100.0) )
+                    if p.valid_invoice().is_paid:
+                      res.append(h.link_to('Paid ' + h.integer_to_currency(p.valid_invoice().total),
+                                           h.url_for(controller='invoice', action='view', id=p.valid_invoice().id)))
                     else:
-                      res.append('<a href="/invoice/%d">Owes $%.2f</a>'%(
-                               p.valid_invoice().id, p.valid_invoice().total()/100.0) )
+                      res.append(h.link_to('Owes ' + h.integer_to_currency(p.valid_invoice().total),
+                                           h.url_for(controller='invoice', action='view', id=p.valid_invoice().id)))
 
                     shirt = ''
                     for item in p.valid_invoice().items:
@@ -617,6 +621,103 @@ class AdminController(BaseController):
         c.text += "</p>"
         return table_response()
 
+    @authorize(h.auth.has_organiser_role)
+    def registered_parking(self):
+        """ List of people with parking requested [Registration] """
+        return sql_response("""
+            SELECT
+                person.id AS person_id,
+                person.firstname,
+                person.lastname,
+                person.email_address,
+                ceiling.name AS ceiling,
+                invoice_item.description,
+                SUM(invoice_item.qty) AS qty
+            FROM person
+            JOIN invoice ON (person.id=invoice.person_id)
+            JOIN invoice_item ON (invoice.id=invoice_item.invoice_id)
+            JOIN product ON (invoice_item.product_id=product.id)
+            JOIN product_ceiling_map ON (product.id=product_ceiling_map.product_id)
+            JOIN ceiling ON (product_ceiling_map.ceiling_id=ceiling.id)
+            WHERE (
+                (
+                    invoice.void IS NULL AND (
+                        SELECT CASE WHEN (count(invoice_item.id) = 0) THEN 0 ELSE sum(invoice_item.cost * invoice_item.qty) END AS anon_7 
+                        FROM invoice_item 
+                        WHERE invoice_item.invoice_id = invoice.id
+                    ) = (
+                        SELECT CASE WHEN (count(payment_received.id) = 0) THEN 0 ELSE sum(payment_received.amount_paid) END AS anon_8 
+                        FROM payment_received 
+                        WHERE payment_received.invoice_id = invoice.id AND payment_received.approved = '1'
+                    )
+                ) = 't'
+            )
+            AND ceiling.name = 'parking-all'
+            GROUP BY person.id, person.firstname, person.lastname, person.email_address, invoice_item.description, ceiling.name
+            HAVING SUM(invoice_item.qty) != 0
+            ORDER BY ceiling.name, invoice_item.description;
+        """)
+
+    @authorize(h.auth.has_organiser_role)
+    def registered_accommodation(self):
+        """ List of people with accommodation requested [Registration] """
+        return sql_response("""
+            SELECT
+                person.id AS person_id,
+                person.firstname,
+                person.lastname,
+                person.email_address,
+                registration.special,
+                registration.diet,
+                ceiling.name AS ceiling,
+                invoice_item.description,
+                SUM(invoice_item.qty) AS qty
+            FROM person
+            LEFT OUTER JOIN registration ON (person.id=registration.person_id)
+            JOIN invoice ON (person.id=invoice.person_id)
+            JOIN invoice_item ON (invoice.id=invoice_item.invoice_id)
+            JOIN product ON (invoice_item.product_id=product.id)
+            JOIN product_ceiling_map ON (product.id=product_ceiling_map.product_id)
+            JOIN ceiling ON (product_ceiling_map.ceiling_id=ceiling.id)
+            WHERE (
+                (
+                    invoice.void IS NULL AND (
+                        SELECT CASE WHEN (count(invoice_item.id) = 0) THEN 0 ELSE sum(invoice_item.cost * invoice_item.qty) END AS anon_7 
+                        FROM invoice_item 
+                        WHERE invoice_item.invoice_id = invoice.id
+                    ) = (
+                        SELECT CASE WHEN (count(payment_received.id) = 0) THEN 0 ELSE sum(payment_received.amount_paid) END AS anon_8 
+                        FROM payment_received 
+                        WHERE payment_received.invoice_id = invoice.id AND payment_received.approved = '1'
+                    )
+                ) = 't'
+            )
+            AND ceiling.name = 'accom-all'
+            GROUP BY person.id, person.firstname, person.lastname, person.email_address, invoice_item.description, ceiling.name, registration.special, registration.diet
+            HAVING SUM(invoice_item.qty) != 0
+            ORDER BY ceiling.name, invoice_item.description;
+        """)
+
+    @authorize(h.auth.has_organiser_role)
+    def registered_without_accom(self):
+        """ List of people with accommodation requested [Registration] """
+        return sql_response("""
+            SELECT person.id, person.firstname, person.lastname, person.email_address, person.country, person.state
+            FROM person
+            JOIN registration ON (person.id=registration.person_id)
+            WHERE (
+                (country = 'AUSTRALIA' AND state != 'ACT')
+                OR country != 'AUSTRALIA'
+            ) AND (
+                person.id NOT IN (
+                    SELECT person_id
+                    FROM invoice
+                    JOIN invoice_item ON (invoice.id=invoice_item.invoice_id)
+                    JOIN product_ceiling_map ON (invoice_item.product_id = product_ceiling_map.product_id)
+                    WHERE product_ceiling_map.ceiling_id = 19
+               )
+            );
+        """)
 
     @authorize(h.auth.has_organiser_role)
     def reconcile(self):
@@ -749,18 +850,18 @@ class AdminController(BaseController):
         <p><textarea cols="100" rows="25">"""
 
         count = 0
-        partners_list = meta.Session.query(Product).filter(Product.category.has(name = 'Partners Programme')).all()
+        partners_list = meta.Session.query(Product).filter(Product.category.has(name = 'Partners\' Programme')).all()
 
         for item in partners_list:
             for invoice_item in item.invoice_items:
-                if invoice_item.invoice.paid() and not invoice_item.invoice.is_void():
+                if invoice_item.invoice.is_paid and not invoice_item.invoice.is_void:
                     r = invoice_item.invoice.person.registration
                     if r.partner_email is not None:
                         c.text += r.partner_name + " &lt;" + r.partner_email + "&gt;\n"
                     elif r.partner_name is not None:
                         c.text += r.partner_name + " &lt;" + r.person.email_address + "&gt;\n"
                     else:
-                        c.text += r.person.fullname() + " &lt;" + r.person.email_address + "&gt;\n"
+                        c.text += r.person.fullname + " &lt;" + r.person.email_address + "&gt;\n"
                     count += 1
         c.text += "</textarea></p>"
         c.text += "<p>Total addresses: " + str(count) + "</p>"
@@ -770,7 +871,7 @@ class AdminController(BaseController):
     @authorize(h.auth.has_organiser_role)
     def speakers_partners(self):
         """ Listing of speakers and their partner details [Speakers] """
-        c.columns = ['Speaker', 'e-mail', 'Partner Programme', 'Penguin Dinner']
+        c.columns = ['Speaker', 'e-mail', 'Partners\' Programme', 'Penguin Dinner']
         c.data = []
 
         total_partners = 0
@@ -783,13 +884,13 @@ class AdminController(BaseController):
                 for invoice in person.invoices:
                     for item in invoice.items:
                         if item.product is not None:
-                            if item.product.category.name == "Partners Programme":
+                            if item.product.category.name == "Partners' Programme":
                                 partners.append(item.description + " x" + str(item.qty))
                                 total_partners += item.qty
                             if item.product.category.name == "Penguin Dinner":
                                 dinner_tickets += item.qty
                                 total_dinner += item.qty
-                c.data.append([person.fullname(),
+                c.data.append([person.fullname,
                                person.email_address,
                                ", ".join(partners),
                                str(dinner_tickets)])
@@ -820,23 +921,23 @@ class AdminController(BaseController):
         c.columns = ['Item', 'Price', 'Qty', 'Amount']
         c.data = []
         for item in item_list:
-            if item.invoice.paid() and not item.invoice.is_void():
-                c.data.append([item.description, h.number_to_currency(item.cost/100), item.qty, h.number_to_currency(item.total()/100)])
-                total += item.total()
-        c.data.append(['','','Total:', h.number_to_currency(total/100)])
+            if item.invoice.is_paid and not item.invoice.is_void:
+                c.data.append([item.description, h.integer_to_currency(item.cost), item.qty, h.integer_to_currency(item.total)])
+                total += item.total
+        c.data.append(['','','Total:', h.integer_to_currency(total)])
         return table_response()
 
     @authorize(h.auth.has_organiser_role)
     def partners_programme(self):
         """ List of partners programme contacts [Partners Programme] """
-        partners_list = meta.Session.query(Product).filter(Product.category.has(name = 'Partners Programme')).all()
+        partners_list = meta.Session.query(Product).filter(Product.category.has(name = 'Partners\' Programme')).all()
         c.text = "*Checkin and checkout dates aren't an accurate source."
         #c.columns = ['Partner Type', 'Qty', 'Registration Name', 'Registration e-mail', 'Partners name', 'Partners e-mail', 'Partners mobile', 'Checkin*', 'Checkout*']
         c.columns = ['Partner Type', 'Qty', 'Registration Name', 'Registration e-mail', 'Partners name', 'Partners e-mail', 'Partners mobile']
         c.data = []
         for item in partners_list:
             for invoice_item in item.invoice_items:
-                if invoice_item.invoice.paid() and not invoice_item.invoice.is_void():
+                if invoice_item.invoice.is_paid and not invoice_item.invoice.is_void:
                     c.data.append([item.description,
                                    invoice_item.qty,
                                    invoice_item.invoice.person.firstname + " " + invoice_item.invoice.person.lastname,
@@ -939,7 +1040,7 @@ class AdminController(BaseController):
                 ticket_types = []
                 partners_programme = []
                 for invoice in registration.person.invoices:
-                    if invoice.paid() and not invoice.is_void():
+                    if invoice.is_paid and not invoice.is_void:
                         for item in invoice.items:
                             if item.description.lower().startswith("discount"):
                                 pass
@@ -996,12 +1097,7 @@ class AdminController(BaseController):
     @authorize(h.auth.has_organiser_role)
     def people_by_country(self):
         """ Registered and paid people by country [Statistics] """
-        data = {}
-        for registration in meta.Session.query(Registration).all():
-            if registration.person.has_paid_ticket():
-                country = registration.person.country.capitalize()
-                data[country] = data.get(country, 0) + 1
-        c.data = data.items()
+        c.data = meta.Session.query(func.initcap(Person.country), func.count(Person.id)).join(Invoice).join(InvoiceItem).join(Product).join(ProductCategory).filter(Invoice.is_paid == True).filter(ProductCategory.name == "Ticket").group_by(func.initcap(Person.country)).order_by(func.initcap(Person.country)).all()
         c.data.sort(lambda a,b: cmp(b[-1], a[-1]) or cmp(a, b))
         c.text = '''
           <img float="right" width="400" height="200"
@@ -1034,12 +1130,7 @@ class AdminController(BaseController):
     @authorize(h.auth.has_organiser_role)
     def people_by_state(self):
         """ Registered and paid people by state - Australia Only [Statistics] """
-        data = {}
-        for registration in meta.Session.query(Registration).all():
-            if registration.person.has_paid_ticket() and registration.person.country == "Australia":
-                state = registration.person.state.capitalize()
-                data[state] = data.get(state, 0) + 1
-        c.data = data.items()
+        c.data = meta.Session.query(func.initcap(Person.state), func.count(Person.id)).join(Invoice).join(InvoiceItem).join(Product).join(ProductCategory).filter(func.initcap(Person.country) == "Australia").filter(Invoice.is_paid == True).filter(ProductCategory.name == "Ticket").group_by(func.initcap(Person.state)).order_by(func.initcap(Person.state)).all()
         c.data.sort(lambda a,b: cmp(b[-1], a[-1]) or cmp(a, b))
         c.text = '''
           <img float="right" width="400" height="200"
@@ -1272,14 +1363,14 @@ class AdminController(BaseController):
             products[category] = []
 
           for invoice in person.invoices:
-            if not invoice.is_void():
+            if not invoice.is_void:
               valid_invoices = True
               for ii in invoice.items:
                 if ii.product is not None and ii.product.category is not None:
                   if ii.product.category.name in products:
                     text = "%s x %s" % (ii.qty, ii.product.description)
                     text = text.replace(' years old', '')
-#                    if not invoice.paid():
+#                    if not invoice.is_paid:
 #                      text += " (Not paid)"
                     products[ii.product.category.name].append(text)
 
@@ -1309,7 +1400,7 @@ class AdminController(BaseController):
         for v in volunteer_collection:
           row = [str(v.person.id)]
           row.append(str(v.id))
-          row.append(h.link_to(v.person.fullname(), url=h.url_for(controller="person", action='view', id=v.person.id)))
+          row.append(h.link_to(v.person.fullname, url=h.url_for(controller="person", action='view', id=v.person.id)))
           row.append(h.link_to(v.person.email_address, url="mailto:" + v.person.email_address))
           row.append(v.person.country)
           row.append(v.person.city)
@@ -1330,7 +1421,7 @@ class AdminController(BaseController):
             type = 'Not Registered'
 
             for invoice in v.person.invoices:
-              if invoice.paid() and not invoice.is_void():
+              if invoice.is_paid and not invoice.is_void:
                 for item in invoice.items:
                   if item.description.find('Volunteer') > -1:
                     type = 'Volunteer'
@@ -1360,11 +1451,11 @@ class AdminController(BaseController):
 
         payments_count = dict()
         for i in invoices:
-          if i.paid() and not i.is_void():
-            if i.total() == 0:
+          if i.is_paid and not i.is_void:
+            if i.total == 0:
               date = i.creation_timestamp.date()
             else:
-              date = i.good_payments()[0].creation_timestamp.date()
+              date = i.good_payments[0].creation_timestamp.date()
 
             if date not in payments_count:
               payments_count[date] = 0
@@ -1385,6 +1476,69 @@ class AdminController(BaseController):
         return table_response()
 
     @authorize(h.auth.has_organiser_role)
+    def paid_product_by_date(self):
+        """ Number of paid (actual payments only) invoices per ceiling by date. [Registrations] """
+        return sql_response("""
+            SELECT
+                DATE(payment_received.creation_timestamp) AS date,
+                product_category.name,
+                product.description AS product,
+                SUM(invoice_item.qty - invoice_item.free_qty) AS qty,
+                SUM(invoice_item.cost * (invoice_item.qty - invoice_item.free_qty)) / 100 AS total
+            FROM payment_received
+            JOIN invoice ON (payment_received.invoice_id=invoice.id)
+            JOIN invoice_item ON (invoice.id=invoice_item.invoice_id)
+            JOIN product ON (invoice_item.product_id = product.id)
+            JOIN product_category ON (product.category_id=product_category.id)
+            WHERE payment_received.approved = 't'
+            GROUP BY product_category.name, product_category.display_order, product.display_order, product.description, DATE(payment_received.creation_timestamp)
+            HAVING SUM(invoice_item.qty - invoice_item.free_qty) != 0 AND SUM(invoice_item.cost * (invoice_item.qty - invoice_item.free_qty)) != 0
+            ORDER BY product_category.display_order, DATE(payment_received.creation_timestamp), product.display_order;
+        """)
+
+    @authorize(h.auth.has_organiser_role)
+    def paid_ticket_by_date(self):
+        """ Number of paid (actual payments only) invoices per ceiling by date. [Registrations] """
+        return sql_response("""
+            SELECT
+                DATE(payment_received.creation_timestamp) AS date,
+                product.description AS product,
+                SUM(invoice_item.qty - invoice_item.free_qty) AS qty,
+                SUM(invoice_item.cost * (invoice_item.qty - invoice_item.free_qty)) / 100 AS total
+            FROM payment_received
+            JOIN invoice ON (payment_received.invoice_id=invoice.id)
+            JOIN invoice_item ON (invoice.id=invoice_item.invoice_id)
+            JOIN product ON (invoice_item.product_id = product.id)
+            JOIN product_category ON (product.category_id=product_category.id)
+            WHERE payment_received.approved = 't'
+            AND product_category.name = 'Ticket'
+            GROUP BY product_category.name, product_category.display_order, product.display_order, product.description, DATE(payment_received.creation_timestamp)
+            HAVING SUM(invoice_item.qty - invoice_item.free_qty) != 0 AND SUM(invoice_item.cost * (invoice_item.qty - invoice_item.free_qty)) != 0
+            ORDER BY product_category.display_order, DATE(payment_received.creation_timestamp), product.display_order;
+        """)
+
+    @authorize(h.auth.has_organiser_role)
+    def paid_accom_by_date(self):
+        """ Number of paid (actual payments only) invoices per ceiling by date. [Registrations] """
+        return sql_response("""
+            SELECT
+                DATE(payment_received.creation_timestamp) AS date,
+                product.description AS product,
+                SUM(invoice_item.qty - invoice_item.free_qty) AS qty,
+                SUM(invoice_item.cost * (invoice_item.qty - invoice_item.free_qty)) / 100 AS total
+            FROM payment_received
+            JOIN invoice ON (payment_received.invoice_id=invoice.id)
+            JOIN invoice_item ON (invoice.id=invoice_item.invoice_id)
+            JOIN product ON (invoice_item.product_id = product.id)
+            JOIN product_category ON (product.category_id=product_category.id)
+            WHERE payment_received.approved = 't'
+            AND product_category.name = 'Accommodation'
+            GROUP BY product_category.name, product_category.display_order, product.display_order, product.description, DATE(payment_received.creation_timestamp)
+            HAVING SUM(invoice_item.qty - invoice_item.free_qty) != 0 AND SUM(invoice_item.cost * (invoice_item.qty - invoice_item.free_qty)) != 0
+            ORDER BY product_category.display_order, DATE(payment_received.creation_timestamp), product.display_order;
+        """)
+
+    @authorize(h.auth.has_organiser_role)
     def av_norelease(self):
         """ A list of proposals without releases for video/slides [AV] """
         talk_list = Proposal.find_all_accepted().filter(or_(Proposal.video_release==False, Proposal.slides_release==False)).order_by(Proposal.scheduled)
@@ -1397,7 +1551,7 @@ class AdminController(BaseController):
                            '<br/>'.join([
                                 '<a href="/person/%d">%s</a> (<a href="mailto:%s">%s</a>)' % (
                                     p.id,
-                                    h.util.html_escape(p.fullname()),
+                                    h.util.html_escape(p.fullname),
                                     h.util.html_escape(p.email_address),
                                     h.util.html_escape(p.email_address)
                                 ) for p in t.people
@@ -1412,9 +1566,9 @@ class AdminController(BaseController):
     @authorize(h.auth.has_organiser_role)
     def av_technical_requirements(self):
         """ Technical requirements list [AV] """
-        talk_list = Proposal.find_all_accepted().filter(Proposal.technical_requirements > '').order_by(Proposal.scheduled)
+        talk_list = Proposal.find_all_accepted().filter(Proposal.technical_requirements > '').join(ProposalStatus).filter(ProposalStatus.name == 'Accepted').join(Event).join(Schedule).join(TimeSlot).order_by(TimeSlot.start_time)
 
-        c.columns = ['Talk', 'Title', 'Who', 'When', 'Requirements']
+        c.columns = ['Talk', 'Title', 'Who', 'Where', 'When', 'Requirements']
         c.data = []
         for t in talk_list:
             c.data.append(['<a href="/programme/schedule/view_talk/%d">%d</a>' % (t.id, t.id),
@@ -1422,12 +1576,13 @@ class AdminController(BaseController):
                            '<br/>'.join([
                                 '<a href="/person/%d">%s</a> (<a href="mailto:%s">%s</a>)' % (
                                     p.id,
-                                    h.util.html_escape(p.fullname()),
+                                    h.util.html_escape(p.fullname),
                                     h.util.html_escape(p.email_address),
                                     h.util.html_escape(p.email_address)
                                 ) for p in t.people
                            ]),
-                           h.util.html_escape(t.scheduled),
+                           h.util.html_escape(h.list_to_string([schedule.location.display_name for schedule in t.event.schedule])),
+                           h.util.html_escape(h.list_to_string([str(schedule.time_slot.start_time) + ' - ' + str(schedule.time_slot.end_time) for schedule in t.event.schedule])),
                            h.util.html_escape(t.technical_requirements),
             ])
         c.noescape = True
@@ -1521,112 +1676,178 @@ class AdminController(BaseController):
         showing the details as would be required for support or rego desk.
         [Registrations,Accounts,Invoicing] """
 
-        args = request.POST; post=True
+        # Start assuming we have a POST
+        args = request.POST
+        post=True
+
+        # If we don't have a POST use GET instead
         if not args:
             args = request.GET
             post = False
-        if not args or not (args.has_key('id') or args.has_key('p_id')):
-            c.error = 'Enter an ID or name in the box on right.'
-            return render('admin/lookup.mako')
-        if args.has_key('p_id'):
-            id = args['p_id']; c.id = id; raw_id = id
-            p = meta.Session.query(Person).filter_by(id=id).all()
-            if p:
-                c.id_type = 'by person ID only'
-                c.p = p[0]
-                c.r = c.p.registration; c.i = c.p.invoices
-                return render('admin/lookup.mako')
+
+        # If we have a person id find the person and return it
+        if args.has_key('p'):
+            try:
+                person_id = int(args['p'])
+            except:
+                pass
             else:
-                c.error = "Invalid person ID (shouldn't happen)."
-                return render('admin/lookup.mako')
+                person = meta.Session.query(Person).get(person_id)
+                if person:
+                    c.id_type = 'Person ID'
+                    c.person = person
+                else:
+                    c.error = 'Not found.'
 
+        elif args.has_key('q'):
+            query = args['q']
+            c.query = args['q']
+            results = []
 
-        id = args['id']; c.id = id; raw_id = id
-        results = []
+            results += meta.Session.query(Person).filter(
+                or_(
+                    Person.email_address.ilike(query),
+                    Person.email_address.ilike('%' + query + '%'),
+                    Person.firstname.ilike(query),
+                    Person.lastname.ilike(query),
+                    Person.firstname.ilike('%' + query + '%'),
+                    Person.lastname.ilike('%' + query + '%'),
+                    Person.id.in_(meta.Session.query(Invoice.person_id).join(PaymentReceived).filter(PaymentReceived.gateway_ref == query))
+                ),
+            )
 
-        if True:
-            p = Person.find_by_email(id)
-            if p:
-                results.append((p, 'email'))
-
-            p = meta.Session.query(Person).filter(
-                                       Person.firstname.ilike(id)).all()
-            p += meta.Session.query(Person).filter(
-                                        Person.lastname.ilike(id)).all()
-            if len(p)>0:
-                results += [(pp, 'name') for pp in p]
+            try:
+                query = int(args['q'])
+            except:
+                pass
             else:
-                p = meta.Session.query(Person).filter(
-                               Person.firstname.ilike('%'+id+'%')).all()
-                p += meta.Session.query(Person).filter(
-                                Person.lastname.ilike('%'+id+'%')).all()
-                if len(p)>0:
-                    results += [(pp, 'partial name') for pp in p]
+                results += meta.Session.query(Person).filter(
+                    or_(
+                        Person.id == query,
+                        Person.id.in_(meta.Session.query(Invoice.person_id).filter(Invoice.id == query)),
+                        Person.id.in_(meta.Session.query(Registration.person_id).filter(Registration.id == query)),
+                    )
+                ).all()
 
-            pr = meta.Session.query(PaymentReceived).filter_by(gateway_ref=id).all()
-            for rcvd in pr:
-                results.append((rcvd.invoice.person, 'payment received'))
+            if len(results) == 1:
+                c.person = results[0]
 
-            # Commented out because sqlite doesn't have regexp; postgresql had
-            # that, but not sqlite. --Jiri 9.5.2010
-
-            #phone_pat = '[ \t()/-]*'.join(raw_id)
-            #p = meta.Session.query(Registration).filter(
-            #                  Person.phone.op('regexp')('^'+phone_pat+'$')).all()
-            #for prs in p:
-            #    results.append((prs, 'phone'))
-            #phone_pat = '[ \t()/-]*'.join(raw_id)
-            #
-            #if not p:
-            #    p = meta.Session.query(Registration).filter(
-            #                      #Person.phone.op('regexp')(phone_pat)).all()
-            #    for prs in p:
-            #        results.append((prs, 'partial phone'))
-
-        try:
-            id = int(id)
-        except:
-            pass # not an integer, never mind...
+            elif len(results) > 1:
+                kf = lambda r: ((r.lastname or 'ZZZ') + (r.firstname or 'ZZZ')).lower()
+                cf = lambda f: lambda a,b: cmp(f(a), f(b))
+                c.many = results
+                c.many.sort(cf(kf))
+            else:
+                c.error = 'Not found.'
         else:
-            # conversion of id to an integer succeeded, look it up as ID
+            c.error = 'Enter an ID or name in the box on right.'
 
-            # first, check if there's a note to be posted; in this case, ID
-            # must be a rego ID, because that's how the form is set up.
-            if post and args.has_key('note'):
-                r = meta.Session.query(Registration).filter_by(id=id).all()
-
-                n = RegoNote(note=args['note'])
-                meta.Session.save(n)
-                r[0].notes.append(n)
-                c.signed_in_person.notes_made.append(n)
-                meta.Session.flush()
-
-            i = meta.Session.query(Invoice).filter_by(id=id).all()
-            for inv in i:
-                results.append((inv.person, 'invoice'))
-
-            r = meta.Session.query(Registration).filter_by(id=id).all()
-            for rego in r:
-                results.append((rego.person, 'rego'))
-
-            p = meta.Session.query(Person).filter_by(id=id).all()
-            for prs in p:
-                results.append((prs, 'person'))
-
-        if len(results)==1:
-            c.p, c.id_type = results[0]
-            c.r = c.p.registration; c.i = c.p.invoices
-            return render('admin/lookup.mako')
-        elif len(results)>1:
-	    kf = lambda r: (r[0].lastname + r[0].firstname).lower()
-	    cf = lambda f: lambda a,b: cmp(f(a), f(b))
-            c.many = results
-            c.many.sort(cf(kf))
-            return render('admin/lookup.mako')
-
-        c.error = 'Not found.'
         return render('admin/lookup.mako')
 
+    def generate_fulfilment(self):
+        """ Based on currently paid invoices, generate fulfilment records
+            [Registration,Invoicing] """
+        invoice_query = meta.Session.query(Invoice.person_id, InvoiceItem.product_id, Product.fulfilment_type_id, func.sum(InvoiceItem.qty).label('qty')).join(InvoiceItem).join(Product).filter(Product.fulfilment_type != None, Invoice.is_paid == True).group_by(Invoice.person_id, InvoiceItem.product_id, Product.fulfilment_type_id)
+        fulfilment_query = meta.Session.query(Fulfilment.person_id, FulfilmentItem.product_id, Fulfilment.type_id, -func.sum(FulfilmentItem.qty).label('qty')).join(FulfilmentItem).join(FulfilmentStatus).filter(FulfilmentStatus.void == False).group_by(Fulfilment.person_id, FulfilmentItem.product_id, Fulfilment.type_id)
+        union_query = invoice_query.union(fulfilment_query)
+        columns = { d['name']: d['expr']  for d in union_query.column_descriptions }
+        outstanding_query = union_query.with_entities(Person, Product, FulfilmentType, func.sum(columns['qty']).label('qty')).join(Person).join(Product).join(FulfilmentType, columns['fulfilment_type_id'] == FulfilmentType.id).group_by(Person, Product, FulfilmentType).having(func.sum(columns['qty']) != 0)
+        outstanding = outstanding_query.all()
+
+        for outstanding_item in outstanding:
+            # Find existing FulfilmentGroup or generate a new one
+            try:
+                fulfilment_group = meta.Session.query(FulfilmentGroup).filter(FulfilmentGroup.person == outstanding_item.Person).one()
+            except:
+                code = generate_code(7, meta.Session.query(FulfilmentGroup.code))
+                fulfilment_group = FulfilmentGroup(person=outstanding_item.Person, code=code)
+                meta.Session.add(fulfilment_group)
+
+            # Find the Fulfilment this item should belong to where it is still editable or create a new one
+            try:
+                fulfilment = meta.Session.query(Fulfilment).filter(Fulfilment.person == outstanding_item.Person, Fulfilment.type == outstanding_item.FulfilmentType, Fulfilment.can_edit == True).one()
+            except:
+                code = generate_code(5, meta.Session.query(Fulfilment.code))
+                fulfilment = Fulfilment(person=outstanding_item.Person, type=outstanding_item.FulfilmentType, code=code)
+                fulfilment_group.fulfilments.append(fulfilment)
+                meta.Session.add(fulfilment)
+
+            # Find fulfilment item record for this person/product. Make it part of the correct fulfilment and update the qty. Otherwise create a new one
+            try:
+                fulfilment_item = meta.Session.query(FulfilmentItem).join(Fulfilment).filter(Fulfilment.person == outstanding_item.Person, Fulfilment.type == outstanding_item.FulfilmentType, FulfilmentItem.product == outstanding_item.Product, Fulfilment.can_edit == True).one()
+                fulfilment_item.fulfilment = fulfilment
+                fulfilment_item.qty += outstanding_item.qty
+                if fulfilment_item.qty == 0:
+                    meta.Session.delete(fulfilment_item)
+            except:
+                fulfilment_item = FulfilmentItem(fulfilment=fulfilment, product=outstanding_item.Product, qty=outstanding_item.qty)
+                meta.Session.add(fulfilment_item)
+
+            meta.Session.commit()
+        c.columns = ['Person', 'Product', 'FulfilmentType', 'Qty']
+        c.data = [[result.Person.fullname, result.Product.category.name + ' - ' + result.Product.description, result.FulfilmentType.name, result.qty] for result in outstanding]
+        return table_response()
+
+    def fulfilment_report(self):
+        return sql_response("""
+                select description,
+                       sum(completed) as completed,
+                       sum(non_completed) as non_completed
+                from (
+                       select pc.name || ' => ' || p.description as description,
+                             case when fs.name = 'Completed' then fi.qty else 0 end as completed,
+                             case when fs.name <> 'Completed' then fi.qty else 0 end as non_completed
+                      from fulfilment f,
+                            fulfilment_item fi,
+                            product p,
+                            product_category pc,
+                            fulfilment_status fs
+                       where fi.fulfilment_id = f.id
+                         and fi.product_id = p.id
+                         and pc.id = p.category_id
+                         and f.status_id = fs.id
+                         and not fs.void
+                     ) data
+                group by description
+                order by description
+            """)
+    def generate_boardingpass(self):
+        """ For every fulfilment group, generate a boarding pass
+            [Registration,Invoicing] """
+        from zkpylons.lib import pdfgen
+        from zkpylons.config.zkpylons_config import file_paths
+        groups = FulfilmentGroup.find_all()
+        for group in groups:
+            c.fulfilment_group = group
+
+            xml_s = render('/fulfilment_group/pdf.mako')
+            xsl_f = app_globals.mako_lookup.get_template('/fulfilment_group/pdf.xsl').filename
+            pdf_data = pdfgen.generate_pdf(xml_s, xsl_f)
+
+            if c.fulfilment_group.person:
+                filename = c.fulfilment_group.person.email_address + '.pdf'
+            else:
+                filename = lca_info['event_shortname'] + '_' + str(c.fulfilment_group.id) + '.pdf'
+            pdf = open(file_paths['zk_root'] + '/boardingpass/' + filename, 'w')
+            pdf.write(pdf_data)
+            pdf.close()
+        return "Completed"
+
+    def generate_fulfilment_codes(self):
+        for fulfilment in meta.Session.query(Fulfilment).all():
+            if not fulfilment.code:
+                fulfilment.code = generate_code(5, meta.Session.query(Fulfilment.code))
+        meta.Session.commit()
+        return 'Completed'
+
+def generate_code(length=7, selectable=None):
+    while True:
+        res = os.popen('pwgen ' + str(length) + ' -BnA').read().strip()
+        if len(res)<length:
+            raise StandardError("pwgen call failed")
+        if selectable and res not in [row[0] for row in selectable.all()]:
+            break
+    return res
 
 def _keysigning_pdf(keyid):
     import os, tempfile, subprocess
@@ -1653,6 +1874,9 @@ def csv_response(sql):
     c.columns = get_column_names(res)
     c.data = res.fetchall()
     c.sql = sql
+
+    # Convert to utf-8 so that csv writer can handle the strings
+    c.data = [[unicode(s).encode("utf-8") for s in row] for row in c.data]
 
     import csv, StringIO
     f = StringIO.StringIO()
@@ -1692,7 +1916,7 @@ def sql_response(sql):
         return csv_response(sql)
     res = meta.Session.execute(sql)
     c.columns = get_column_names(res)
-    if hasattr(c.columns, "__call__"):	# work around for bug in sqlalchemy 0.5.7
+    if hasattr(c.columns, "__call__"):        # work around for bug in sqlalchemy 0.5.7
       c.columns = c.columns()
     c.data = res.fetchall()
     c.sql = sql

@@ -59,6 +59,7 @@ class Person(Base):
     # the lengths of the fields are chosen arbitrarily
     firstname = sa.Column(sa.types.Text)
     lastname = sa.Column(sa.types.Text)
+    fullname = sa.orm.column_property(firstname + " " + lastname)
     address1 = sa.Column(sa.types.Text)
     address2 = sa.Column(sa.types.Text)
     city = sa.Column(sa.types.Text)
@@ -90,6 +91,11 @@ class Person(Base):
       cascade="all, delete-orphan", backref='person')
     social_networks = association_proxy('by_social_network', 'account_name', creator=_create_social_network_map)
     special_registration = sa.orm.relation(SpecialRegistration, backref='person')
+
+    def _get_proposal_offers(self):
+        from proposal import Proposal, ProposalStatus, person_proposal_map
+        return Session.query(Proposal).join(person_proposal_map).join(Person).join(ProposalStatus).filter(Person.id == self.id).filter(ProposalStatus.name.like('%Offered%')).all()
+    proposal_offers = property(_get_proposal_offers)
 
     def __init__(self, **kwargs):
         # remove the args that should never be set via creation
@@ -123,14 +129,14 @@ class Person(Base):
     def is_professional(self):
         """We treat speakers, miniconf orgs, Little Blue sponsors and
            professionals as professionals."""
-        for invoice in self.invoices:
-            if invoice.paid() and not invoice.is_void():
-                if self.is_speaker() or self.is_miniconf_org():
-                    return True
-                else:
-                    for item in invoice.items:
-                        if (item.description.find('Professional') > -1 or item.description.find('Little Blue') > -1):
-                            return True
+        if self.is_speaker() or self.is_miniconf_org():
+            return True
+        else:
+            for invoice in self.invoices:
+                if invoice.is_paid and not invoice.is_void:
+                        for item in invoice.items:
+                            if (item.description.find('Professional') > -1 or item.description.find('Little Blue') > -1):
+                                return True
         return False
 
     def is_speaker(self):
@@ -165,7 +171,7 @@ class Person(Base):
                             'estonia', 'greece', 'hong kong', 'israel', 'luxembourg', 
                             'monaco', 'netherlands', 'portugal', 'south africa']
 
-        if self.country.strip().lower() in common_countries:
+        if self.country and self.country.strip().lower() in common_countries:
             return True
         else:
             return False
@@ -184,19 +190,19 @@ class Person(Base):
 
     def valid_invoice(self):
         for invoice in self.invoices:
-            if not invoice.is_void() and not invoice.manual:
+            if not invoice.is_void and not invoice.manual:
                 return invoice
         return None
 
     def has_valid_invoice(self):
         for invoice in self.invoices:
-            if not invoice.is_void():
+            if not invoice.is_void:
                 return True
         return False
 
     def has_paid_ticket(self):
         for invoice in self.invoices:
-            if invoice.paid() and not invoice.is_void():
+            if invoice.is_paid and not invoice.is_void:
                 for item in invoice.items:
                     if item.product is not None and item.product.category.name == 'Ticket':
                         return True
@@ -204,7 +210,7 @@ class Person(Base):
 
     def ticket_type(self):
         for invoice in self.invoices:
-            if not invoice.is_void():
+            if not invoice.is_void:
                 for item in invoice.items:
                     if item.product is not None and item.product.category.name == 'Ticket':
                         # Strip off any mention of "Ticket".
@@ -216,8 +222,8 @@ class Person(Base):
     def paid(self):
         status = False
         for invoice in self.invoices:
-            if not invoice.is_void():
-                if invoice.paid():
+            if not invoice.is_void:
+                if invoice.is_paid:
                     status = True
                 else:
                     return False
@@ -232,9 +238,6 @@ class Person(Base):
         for sn in SocialNetwork.find_all():
             if sn.name not in self.social_network:
                 self.social_network[sn.name] = ''
-
-    def fullname(self):
-        return "%s %s" % (self.firstname, self.lastname)
 
     def __repr__(self):
         return '<Person id="%s" email="%s">' % (self.id, self.email_address)

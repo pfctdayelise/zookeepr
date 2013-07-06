@@ -8,6 +8,7 @@ from zkpylons.model import Product, ProductCategory, Ceiling, FundingType
 from zkpylons.model import FundingStatus, Funding
 from zkpylons.model import Invoice, Payment
 from zkpylons.model import SocialNetwork
+from zkpylons.model import FulfilmentType, FulfilmentStatus
 
 from zkpylons.config.lca_info import lca_info
 
@@ -50,6 +51,13 @@ class IAgreeValidator(validators.FormValidator):
 class PersonValidator(validators.FancyValidator):
     def _to_python(self, value, state):
         return Person.find_by_id(int(value))
+
+class CountryValidator(validators.FancyValidator):
+    def _to_python(self, value, state):
+        from zkpylons.lib.helpers import countries
+        if value not in countries():
+            raise Invalid('Not a valid country', value, state)
+        return value
 
 class DbContentTypeValidator(validators.FancyValidator):
     def _to_python(self, value, state):
@@ -144,6 +152,35 @@ class ProductCategoryValidator(validators.FancyValidator):
 
     def _from_python(self, value, state):
         return value.id
+
+class FulfilmentTypeValidator(validators.FancyValidator):
+    def _to_python(self, value, state):
+        value = FulfilmentType.find_by_id(value, abort_404=False)
+        if value is None:
+            raise Invalid("Type not found")
+        else:
+            return value
+
+    def _from_python(self, value, state):
+        return value.id
+
+class FulfilmentStatusValidator(validators.FancyValidator):
+    def _to_python(self, value, state):
+        value = FulfilmentStatus.find_by_id(value, abort_404=False)
+        if value is None:
+            raise Invalid('Status not found')
+        else:
+            return value
+
+    def _from_python(self, value, state):
+        return value.id
+
+class FulfilmentTypeStatusValidator(validators.FancyValidator):
+    def validate_python(self, values, state):
+        status = values.get(self.status)
+        type = values.get(self.type)
+        if status not in type.status:
+            raise Invalid("This status is not allowed with this Fulfilment Type", values, state)
 
 class ReviewSchema(BaseSchema):
     score = validators.OneOf(["-2", "-1", "1", "2"], if_missing=None)
@@ -244,8 +281,8 @@ class ProductMinMax(validators.FancyValidator):
         self.product_fields is a [list] of products (generally category.products)
         self.min_qty is the minimum total (generally category.min)
         self.max_qty is the maximum total (generally category.max)
-        
-        See zkpylons.registration.RegistrationController._generate_product_schema for examples        
+
+        See zkpylons.registration.RegistrationController._generate_product_schema for examples
     """
     def validate_python(self, values, state):
         total = 0
@@ -266,7 +303,7 @@ class ProductMinMax(validators.FancyValidator):
         if total > self.max_qty:
             error_dict[self.error_field_name] = "You can not order more than %d %s" % (self.max_qty, self.category_name,)
         if error_dict:
-            error_message = "Quantities for %s are incorrect" % self.category_name 
+            error_message = "Quantities for %s are incorrect" % self.category_name
             raise Invalid(error_message, values, state, error_dict=error_dict)
 
 class ProductInCategory(validators.FancyValidator):

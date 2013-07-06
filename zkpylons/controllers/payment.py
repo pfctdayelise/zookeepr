@@ -53,7 +53,7 @@ class SecurePayPingSchema(BaseSchema):
     bank_reference = validators.String(not_empty=True)
     response_text = validators.String(not_empty=True)
     remote_ip = validators.String(not_empty=True)
-    receipt_address = validators.String(not_empty=True)
+    receipt_address = validators.String(not_empty=False, if_empty="")
 
 class PaymentController(BaseController):
     """This controller receives payment advice from the payment gateway.
@@ -126,7 +126,7 @@ class PaymentController(BaseController):
             'email_address': fields['receipt_address']
        }
 
-        if 'Approved' in c.response['response_text']:
+        if 'Approved' in c.response['response_text'] or 'success' in c.response['response_text']:
             c.response['approved'] = True
         else:
             c.response['approved'] = False
@@ -162,7 +162,10 @@ class PaymentController(BaseController):
             #if c.response['email_address'] != pxpay.munge_email(payment.invoice.person.email_address):
             #    validation_errors.append('Mismatch between returned email address and invoice object')
             if not c.person.is_from_common_country():
-                validation_errors.append('Uncommon country: ' + c.person.country)
+                if c.person.country:
+                    validation_errors.append('Uncommon country: ' + c.person.country)
+                else:
+                    validation_errors.append('Unknown country')
 
         c.pr = PaymentReceived(**c.response)
         c.pr.validation_errors = ';'.join(validation_errors)
@@ -217,7 +220,7 @@ class PaymentController(BaseController):
         if 'HTTP_X_FORWARDED_FOR' in request.environ:
             client_ip = request.environ['HTTP_X_FORWARDED_FOR']
 
-        results['response_text'] = 'Manual payment processed by ' + h.signed_in_person().fullname()
+        results['response_text'] = 'Manual payment processed by ' + h.signed_in_person().fullname
         results['client_ip_zookeepr'] = client_ip
         results['client_ip_gateway'] = client_ip
         results['payment'] = payment

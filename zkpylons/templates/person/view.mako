@@ -9,15 +9,15 @@
 
 <table>
     <tr>
-        <td><b>First name:</b></p></td>
+        <td><b>First name:</b></td>
         <td>${ c.person.firstname }</td>
     </tr>
     <tr>
-        <td><b>Last name:</b></p></td>
+        <td><b>Last name:</b></td>
         <td>${ c.person.lastname }</td>
     </tr>
     <tr>
-        <td><b>Email:</b></p></td>
+        <td><b>Email:</b></td>
         <td>
 % if not c.person.activated:
           ${ c.person.email_address }
@@ -27,10 +27,21 @@
           (not verified)
 %   endif
 % else:
-<a href="mailto:${ c.person.email_address }">${ c.person.email_address }</a>
+          <a href="mailto:${ c.person.email_address }">${ c.person.email_address }</a>
 % endif
         </td>
     </tr>
+% if h.auth.authorized(h.auth.has_organiser_role):
+    <tr>
+        <td><b>Password:</b></td>
+        <td>
+            ${ h.form( h.url_for(action='forgotten_password', id=None), method='post') }
+                ${ h.hidden('email_address', size=60, value=c.person.email_address) }
+                ${ h.submit('submit', 'Send password reset email') }
+            ${ h.end_form() }
+        </td>
+    </tr>
+% endif
 % if h.auth.authorized(h.auth.has_organiser_role):
     <tr>
         <td><b>Badge printed:</b></td>
@@ -46,7 +57,7 @@
 % if c.person.special_registration is not None:
 %   for special_registration in c.person.special_registration:
     <tr>
-      <td><b>${ special_registration.special_offer.id_name }:</b></p></td>
+      <td><b>${ special_registration.special_offer.id_name }:</b></td>
       <td>${ special_registration.member_number }</td>
     </tr>
 %   endfor
@@ -140,26 +151,16 @@
     <td>${ h.link_to("%s" % (s.title), url=h.url_for(controller='proposal', action='view', id=s.id)) }</td>
     <td>${ s.type.name }</td>
     <td>${ h.truncate(s.abstract) | n}</td>
+    <td>${ s.proposer_status }</td>
     <td>
-%       if s.status.name == 'Pending':
-        <i>Undergoing review</i>
-%       elif s.accepted:
-        Accepted
-%       elif s.status.name == 'Withdrawn':
-        Withdrawn
-%       else:
-        Declined
-%       endif
-    </td>
-    <td>
-%       if s.status.name == 'Pending' or s.accepted:
-%         if c.proposal_editing == 'open' or h.auth.authorized(h.auth.has_late_submitter_role):
+%       if c.proposal_editing == 'open' or h.auth.authorized(h.auth.has_late_submitter_role):
       ${ h.link_to("edit", url=h.url_for(controller='proposal', action='edit', id=s.id)) }
-%         endif
+%       endif
+%       if not (s.accepted or s.withdrawn or s.declined):
       ${ h.link_to("withdraw", url=h.url_for(controller='proposal', action='withdraw', id=s.id)) }
+%       endif
     </td>
   </tr>
-%       endif
 %     endfor
 </table>
 %   else:
@@ -226,7 +227,7 @@ This person hasn't registered yet.
   </tr>
 %       for n in c.person.registration.notes:
   <tr class="${ h.cycle('even', 'odd') }">
-    <td valign="top">${ n.by.fullname() } <i>${ n.last_modification_timestamp.strftime("%Y-%m-%d&nbsp; %H:%M") | n}</i></td>
+    <td valign="top">${ n.by.fullname } <i>${ n.last_modification_timestamp.strftime("%Y-%m-%d&nbsp; %H:%M") | n}</i></td>
     <td valign="top">${ h.line_break(n.note) }</td>
     <td valign="top">${ h.link_to("edit", h.url_for(controller='rego_note', action='edit', id=n.id)) }
     ${ h.link_to("view", h.url_for(controller='rego_note', action='view', id=n.id)) }</td>
@@ -256,26 +257,26 @@ This person hasn't registered yet.
   <tr class="${ h.cycle('even', 'odd') }">
     <td>${ h.link_to(str(i.id), h.url_for(controller="invoice", action='view', id=i.id)) }</td>
     <td>${ i.creation_timestamp }</td>
-    <td align="right">${ "$%.2f" % (i.total()/100.0) }</td>
-    <td>${ i.status() }
-%       if i.status() == 'Unpaid' or i.total() == 0:
+    <td align="right">${ h.integer_to_currency(i.total) }</td>
+    <td>${ i.status }
+%       if i.status == 'Unpaid' or i.total == 0:
             <span style="font-size: smaller;">(${ h.link_to('Void', h.url_for(controller="invoice", action="void", id=i.id)) })</span>
 %       endif
-%       if i.status() == 'Invalid':
+%       if i.status == 'Invalid':
             <span style="font-size: smaller;">(${ h.link_to('Unvoid', h.url_for(controller="invoice", action="unvoid", id=i.id)) })</span>
 %       endif
         </td>
         <td>${ h.yesno(i.manual) |n }</td>
         <td>
-%       if i.good_payments().count() > 0:
-%         for p in i.good_payments():
-%           if p.amount_paid != i.total():
+%       if len(i.good_payments) > 0:
+%         for p in i.good_payments:
+%           if p.amount_paid != i.total:
           <b>mismatch!</b>
 %           endif
-          ${ "$%.2f" % (p.amount_paid / 100.0) }
+          ${ h.integer_to_currency(p.amount_paid) }
           <small>${ p.gateway_ref |h}</small>
 %         endfor
-%       elif i.bad_payments().count() > 0:
+%       elif len(i.bad_payments) > 0:
         Bad payment(s)!
 %       else:
           -

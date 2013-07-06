@@ -9,7 +9,7 @@ from formencode import validators, htmlfill, ForEach, Invalid
 from formencode.variabledecode import NestedVariables
 
 from zkpylons.lib.base import BaseController, render
-from zkpylons.lib.validators import BaseSchema, NotExistingPersonValidator, ExistingPersonValidator, PersonSchema, IAgreeValidator, SameEmailAddress
+from zkpylons.lib.validators import BaseSchema, NotExistingPersonValidator, ExistingPersonValidator, PersonSchema, IAgreeValidator, SameEmailAddress, CountryValidator
 import zkpylons.lib.helpers as h
 from zkpylons.lib.helpers import check_for_incomplete_profile
 
@@ -20,7 +20,9 @@ from zkpylons.lib.mail import email
 
 from zkpylons.model import meta
 from zkpylons.model import Person, PasswordResetConfirmation, Role
+from zkpylons.model import ProposalStatus
 from zkpylons.model import SocialNetwork
+from zkpylons.model import Travel
 
 from zkpylons.config.lca_info import lca_info, lca_rego
 
@@ -75,7 +77,7 @@ class _UpdatePersonSchema(BaseSchema):
     city = validators.String(not_empty=True)
     state = validators.String()
     postcode = validators.String(not_empty=True)
-    country = validators.String(not_empty=True)
+    country = CountryValidator(not_empty=True)
     i_agree = validators.Bool(if_missing=False)
 
     chained_validators = [IAgreeValidator("i_agree")]
@@ -106,7 +108,7 @@ class PersonaValidator(validators.FancyValidator):
         assertion = values['assertion']
         audience = h.url_for(qualified=True, controller='home').strip("/")
 
-        page = urllib2.urlopen('https://browserid.org/verify',
+        page = urllib2.urlopen('https://verifier.login.persona.org/verify',
                                urllib.urlencode({ "assertion": assertion,
                                                   "audience": audience}))
         data = json.load(page)
@@ -151,12 +153,22 @@ class RoleSchema(BaseSchema):
     role = validators.String(not_empty=True)
     action = validators.OneOf(['Grant', 'Revoke'])
 
+class TravelSchema(BaseSchema):
+    origin_airport = validators.String(not_empty=True)
+    destination_airport = validators.String(not_empty=True)
+    pre_validators = [NestedVariables]
+
+class OfferSchema(BaseSchema):
+    status = validators.OneOf(['accept', 'withdraw', 'contact'])
+    travel = TravelSchema(if_missing=None)
+    pre_validators = [NestedVariables]
+
 class PersonController(BaseController): #Read, Update, List
     @enforce_ssl(required_all=True)
     def __before__(self, **kwargs):
         pass
 
-    @dispatch_on(POST="_signin") 
+    @dispatch_on(POST="_signin")
     def signin(self):
 
         role_error = session.pop('role_error', None)
@@ -228,7 +240,7 @@ class PersonController(BaseController): #Read, Update, List
 
         return render('person/confirmed.mako')
 
-    @dispatch_on(POST="_forgotten_password") 
+    @dispatch_on(POST="_forgotten_password")
     def forgotten_password(self):
         return render('/person/forgotten_password.mako')
 
@@ -266,7 +278,7 @@ class PersonController(BaseController): #Read, Update, List
 
         return render('person/password_confirmation_sent.mako')
 
-    @dispatch_on(POST="_reset_password") 
+    @dispatch_on(POST="_reset_password")
     def reset_password(self, url_hash):
         c.conf_rec = PasswordResetConfirmation.find_by_url_hash(url_hash)
 
@@ -369,7 +381,7 @@ class PersonController(BaseController): #Read, Update, List
         meta.Session.commit()
 
     @authorize(h.auth.is_valid_user)
-    @dispatch_on(POST="_edit") 
+    @dispatch_on(POST="_edit")
     def edit(self, id):
         # We need to recheck auth in here so we can pass in the id
         if not h.auth.authorized(h.auth.Or(h.auth.is_same_zkpylons_user(id), h.auth.has_organiser_role)):
@@ -410,7 +422,7 @@ class PersonController(BaseController): #Read, Update, List
         meta.Session.commit()
         redirect_to(action='view', id=id)
 
-    @dispatch_on(POST="_new") 
+    @dispatch_on(POST="_new")
     def new(self):
         # Do we allow account creation?
         if lca_info['account_creation']:
@@ -497,7 +509,7 @@ class PersonController(BaseController): #Read, Update, List
 
         return render('person/view.mako')
 
-    @dispatch_on(POST="_roles") 
+    @dispatch_on(POST="_roles")
     @authorize(h.auth.has_organiser_role)
     def roles(self, id):
 
@@ -531,3 +543,72 @@ class PersonController(BaseController): #Read, Update, List
         meta.Session.commit()
 
         return render('person/roles.mako')
+
+    @dispatch_on(POST="_offer")
+    @authorize(h.auth.is_valid_user)
+    def offer(self, id):
+        # We need to recheck auth in here so we can pass in the id
+        if not h.auth.authorized(h.auth.Or(h.auth.is_same_zkpylons_user(id), h.auth.has_reviewer_role, h.auth.has_organiser_role)):
+            # Raise a no_auth error
+            h.auth.no_role()
+        c.person = Person.find_by_id(id)
+        c.offers = c.person.proposal_offers
+        c.travel_assistance = reduce(lambda a, b: a or ('Travel' in b.status.name), c.offers, False) or False 
+        c.accommodation_assistance = reduce(lambda a, b: a or ('Accommodation' in b.status.name), c.offers, False) or False 
+
+        # Set initial form defaults
+        defaults = {
+            'status': 'accept',
+            }
+        if c.person.travel:
+            defaults.update(h.object_to_defaults(c.person.travel, 'travel'))
+
+        form = render('person/offer.mako')
+        return htmlfill.render(form, defaults)
+
+    @authorize(h.auth.is_valid_user)
+    @validate(schema=OfferSchema, form='offer', post_only=True, on_get=True, variable_decode=True)
+    def _offer(self,id):
+        # We need to recheck auth in here so we can pass in the id
+        if not h.auth.authorized(h.auth.Or(h.auth.is_same_zkpylons_user(id), h.auth.has_reviewer_role, h.auth.has_organiser_role)):
+            # Raise a no_auth error
+            h.auth.no_role()
+        c.person = Person.find_by_id(id)
+        c.offers = c.person.proposal_offers
+        c.travel_assistance = reduce(lambda a, b: a or ('Travel' in b.status.name), c.offers, False) or False 
+        c.accommodation_assistance = reduce(lambda a, b: a or ('Accommodation' in b.status.name), c.offers, False) or False 
+
+        # What status are we moving all proposals to?
+        if self.form_result['status'] == 'accept':
+            c.status = ProposalStatus.find_by_name('Accepted')
+        elif self.form_result['status'] == 'withdraw':
+            c.status = ProposalStatus.find_by_name('Withdrawn')
+        elif self.form_result['status'] == 'contact':
+            c.status = ProposalStatus.find_by_name('Contact')
+        else:
+            c.status = None
+
+        emails = [c.person.email_address]
+        for offer in c.offers:
+            offer.status = c.status
+            if offer.type.notify_email and offer.type.notify_email not in emails:
+                emails.append(offer.type.notify_email)
+
+        if c.travel_assistance:
+            if not c.person.travel:
+                self.form_result['travel']['flight_details'] = ''
+                travel = Travel(**self.form_result['travel'])
+                meta.Session.add(travel)
+                c.person.travel = travel
+            else:
+                for key in self.form_result['travel']:
+                    setattr(c.person.travel, key, self.form_result['travel'][key])
+
+        if c.status.name == 'Accepted':
+            email(c.person.email_address, render('/person/offer_email.mako'))
+        else:
+            email(emails, render('/person/offer_email.mako'))
+
+        # update the objects with the validated form data
+        meta.Session.commit()
+        return render('person/offer.mako')

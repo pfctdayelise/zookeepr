@@ -23,7 +23,6 @@ import array
 <p class="note">${ h.lca_info['event_pricing_disclaimer'] }</p>
 
         <fieldset id="personal">
-          <legend>&nbsp;</legend>
           <h2>Personal Information</h2>
 
           <p class="note"><span class="mandatory">*</span> - Mandatory field</p>
@@ -109,7 +108,6 @@ ${ h.hidden('person.mobile') }
         </fieldset>
 
         <fieldset id="voucher">
-          <legend>&nbsp;</legend>
           <h2>Voucher</h2>
 
           <p class="label"><label for="registration.voucher_code">Voucher code:</label></p>
@@ -128,7 +126,6 @@ ${ h.hidden('person.mobile') }
 %   if len(products) > 0:
 
         <fieldset id="${ h.computer_title(category.name) }">
-          <legend>&nbsp;</legend>
           <h2>${ category.name.title() }</h2>
           <p class="description">${ category.description |n}</p>
           <input type="hidden" name="${'products.error.' + category.clean_name()}">
@@ -147,7 +144,7 @@ ${ h.hidden('person.mobile') }
            endfor
 %>
           <table>
-%           for gender in fields: 
+%           for gender in fields:
             <tr>
               <th>&nbsp;</th>
 %             for (size, product) in fields[gender]:
@@ -186,7 +183,7 @@ ${ h.hidden('person.mobile') }
 %>
           <table>
             <tr>
-%         for day in sorted(fields): 
+%         for day in sorted(fields):
               <th>${ day }</th>
 %         endfor
             </tr>
@@ -195,14 +192,14 @@ ${ h.hidden('person.mobile') }
               <td>
 %           for (miniconf, product) in sorted(fields[day]):
 %             if category.display == 'qty':
-                ${ h.text('products.product_' + product.clean_description(True) + '_qty', size=2, disabled=not product.available()) + ' ' + miniconf} 
+                ${ h.text('products.product_' + product.clean_description(True) + '_qty', size=2, disabled=not product.available()) + ' ' + miniconf}
 %             elif category.display == 'checkbox':
                 ${ h.checkbox('products.product_' + product.clean_description(True) + '_checkbox', label=miniconf, disabled=not product.available()) }
 %             endif
 %             if not product.available():
             <span class="mandatory">SOLD&nbsp;OUT</span>
 %             elif product.cost != 0:
-                - ${ h.number_to_currency(product.cost/100.0) }
+                - ${ h.integer_to_currency(product.cost) }
 %             endif
             <br/>
 %           endfor
@@ -211,10 +208,10 @@ ${ h.hidden('person.mobile') }
             </tr>
           </table>
 
-		  
-		  
-		  
-		  
+
+
+
+
 		  %       elif category.display_mode == 'accommodation':
 <%
           fields = {}
@@ -230,7 +227,7 @@ ${ h.hidden('person.mobile') }
 %>
           <table>
             <tr>
-%         for day in sorted(fields): 
+%         for day in sorted(fields):
               <th>${ day }</th>
 %         endfor
             </tr>
@@ -240,14 +237,14 @@ ${ h.hidden('person.mobile') }
 %           for (accom, product) in sorted(fields[day]):
 <div id="${ product.clean_description(True).replace(' ','_') + '_div'}">
 %             if category.display == 'qty':
-                ${ h.text('products.product_' + product.clean_description(True) + '_qty', size=2, disabled=not product.available()) + ' ' + accom} 
+                ${ h.text('products.product_' + product.clean_description(True) + '_qty', size=2, disabled=not product.available()) + ' ' + accom}
 %             elif category.display == 'checkbox':
                 ${ h.checkbox('products.product_' + product.clean_description(True) + '_checkbox', label=accom, disabled=not product.available()) }
 %             endif
 %             if not product.available():
             <span class="mandatory">SOLD&nbsp;OUT</span>
 %             elif product.cost != 0:
-                - ${ h.number_to_currency(product.cost/100.0) }
+                - ${ h.integer_to_currency(product.cost) }
 %             endif
             <br /></div>
 %           endfor
@@ -255,12 +252,12 @@ ${ h.hidden('person.mobile') }
 %         endfor
             </tr>
           </table>
-<script> 
+<script>
 $('div[id$="double_div"]').hide();
 $('div[id$="double_breakfast_div"]').hide();
 $('div[id$="single_breakfast_div"]').hide();
 function accommdisplay() {
-if (jQuery('input[id="breaky_accomm_option"]').attr('checked')) 
+if (jQuery('input[id="breaky_accomm_option"]').attr('checked'))
     {
     jQuery('div[id$="breakfast_div"]').show();
     jQuery('div[id$="double_div"]').hide();
@@ -285,9 +282,9 @@ $('input[id$="accomm_option"]').change( function() {
 accommdisplay();
 });
 </script>
-		  
-		  
-		  
+
+
+
 
 %       elif category.display_mode == 'grid':
 <table>
@@ -298,7 +295,7 @@ accommdisplay();
                if not product.available():
                    soldout = '<span class="mandatory">SOLD&nbsp;OUT</span><br />'
 %>
-    <th>${ product.description }<br />${ soldout | n}(${ h.number_to_currency(product.cost/100.0) })</th>
+    <th>${ product.description }<br />${ soldout | n}(${ h.integer_to_currency(product.cost) })</th>
 %           endfor
   </tr>
 %           for product in products:
@@ -317,10 +314,10 @@ accommdisplay();
                soldout = ''
                if not product.available():
                    soldout = ' <span class="mandatory">SOLD&nbsp;OUT</span> '
-%> 
+%>
 
 %              if category.name == "Ticket":
-                <li> <label onclick="javascript: ticketWarning(' ${ product.description } ');"> ${ h.radio('products.category_' + category.clean_name(), str(product.id)) } ${ soldout |n}${ product.description } - ${ h.number_to_currency(product.cost/100.0) }</label><br />
+                <li> <label onclick="javascript: ticketWarning(' ${ product.description } ');"> ${ h.radio('products.category_' + category.clean_name(), str(product.id)) } ${ soldout |n}${ product.description } - ${ h.integer_to_currency(product.cost) }</label><br />
 %                  if product.description.lower().find('student') > -1:
 
 <div id="warningDiv">
@@ -333,7 +330,7 @@ accommdisplay();
           </script>
 %                 endif
 %              else:
-          <li> <label> ${ h.radio('products.category_' + category.clean_name(), str(product.id)) } ${ soldout |n}${ product.description } - ${ h.number_to_currency(product.cost/100.0) }</label><br />
+          <li> <label> ${ h.radio('products.category_' + category.clean_name(), str(product.id)) } ${ soldout |n}${ product.description } - ${ h.integer_to_currency(product.cost) }</label><br />
 %              endif
 %         endfor
           </ul>
@@ -352,7 +349,7 @@ accommdisplay();
                    soldout = ' SOLD&nbsp;OUT '
                endif
 %>
-              <option value="${ product.id }"> ${ soldout |n}${ product.description } - ${ h.number_to_currency(product.cost/100.0) }</option>
+              <option value="${ product.id }"> ${ soldout |n}${ product.description } - ${ h.integer_to_currency(product.cost) }</option>
 %           endfor
             </select>
           </p>
@@ -364,7 +361,7 @@ accommdisplay();
                if not product.available():
                    soldout = ' <span class="mandatory">SOLD&nbsp;OUT</span> '
 %>
-         <p class="entries">${ h.checkbox('products.product_' + product.clean_description(True) + '_checkbox', label=soldout + ' ' + product.description + ' - ' + h.number_to_currency(product.cost/100.0)) }</p>
+         <p class="entries">${ h.checkbox('products.product_' + product.clean_description(True) + '_checkbox', label=soldout + ' ' + product.description + ' - ' + h.integer_to_currency(product.cost)) }</p>
 %           endfor
 %       elif category.display == 'qty':
 %           for product in products:
@@ -373,7 +370,7 @@ accommdisplay();
                if not product.available():
                    soldout = ' <span class="mandatory">SOLD&nbsp;OUT</span> '
 %>
-          <p>${ soldout |n}${ product.description } ${ h.text('products.product_' + product.clean_description(True) + '_qty', size=2) } x ${ h.number_to_currency(product.cost/100.0) }</p>
+          <p>${ soldout |n}${ product.description } ${ h.text('products.product_' + product.clean_description(True) + '_qty', size=2) } x ${ h.integer_to_currency(product.cost) }</p>
 %           endfor
 %       endif
 %       if category.name == 'Accommodation':
@@ -388,14 +385,14 @@ accommdisplay();
           <p>Please see the <a href="/register/accommodation" target="_blank">accommodation page</a> for prices and details.</p>
 
 %         endif
-%       elif category.name == "Partners Programme":
+%       elif category.name == "Partners' Programme":
           <p class="label"><span class="mandatory">#</span><label for="registration.partner_name">Your partner's name:</label></p>
           <p class="entries">${ h.text('products.partner_name', size=50) }</p>
           <p class="note">#If your partner will be participating in the programme, then this field is required so that our Partners Programme manager can contact them.</p>
           <p class="label"><span class="mandatory">#</span><label for="registration.partner_email">Your partner's email address:</label></p>
           <p class="entries">${ h.text('products.partner_email', size=50) }</p>
           <p class="note">#If your partner will be participating in the programme, then this field is required so that our Partners Programme manager can contact them.</p>
-          <p class="label"><span class="mandatory">#</span><label for="registration.partner_mobile">Your partner's mobile (if known, in international format, otherwise enter "<b>unknown</b>"):</label></p>
+          <p class="label"><span class="mandatory">#</span><label for="registration.partner_mobile">enter number in international format. If you don't know the number, type "unknown".:</label></p>
           <p class="entries">${ h.text('products.partner_mobile', size=50) }</p>
           <p class="note">A Partners Programme shirt is included with every adult partner ticket. Please indicate the appropriate number and sizes in the T-Shirt Section (above).</p>
 %       endif
@@ -407,7 +404,6 @@ accommdisplay();
 % endfor
 
         <fieldset>
-          <legend>&nbsp;</legend>
           <h2>Further Information</h2>
 
           <p class="label"><span class="mandatory">*</span> <label for="registration.over18">Are you over 18?</label></p>
@@ -424,7 +420,7 @@ accommdisplay();
           <p class="entries">${ h.text('registration.special', size=60) }</p>
           <p class="note">Please enter any requirements if necessary; access requirements, etc.</p>
 % if h.lca_rego['ask_past_confs']:
-             <p class="label"><label for="registration.prevlca">Have you attended linux.conf.au before?</label></p>
+             <p class="label"><label for="registration.prevlca">Have you attended ${ h.lca_info['event_generic_name'] } before?</label></p>
             <p class="entries">
             <table>
               <tr>
@@ -439,10 +435,9 @@ accommdisplay();
             </p>
 % endif
           </fieldset>
-% if h.lca_rego['lca_optional_stuff']:
+% if h.lca_rego['lca_optional_stuff'] == 'yes':
           <fieldset>
-            <legend>&nbsp;</legend>
-            <h2>Optional</h2>
+              <h2>Optional</h2>
 <script src="/silly.js"></script>
 <table>
 <tr>
@@ -556,8 +551,7 @@ accommdisplay();
           </fieldset>
 % endif
           <fieldset>
-            <legend>&nbsp;</legend>
-            <h2>Subscriptions</h2>
+              <h2>Subscriptions</h2>
              <p class="note">Tick below to sign up for any of the following:</p>
 
             <p class="entries">
@@ -573,8 +567,7 @@ accommdisplay();
 
 % if is_speaker:
           <fieldset>
-            <legend>&nbsp;</legend>
-            <h2>Speaker recording consent and release</h2>
+              <h2>Speaker recording consent and release</h2>
             <p>As a service to Linux Australia members and to other interested Linux users,
             Linux Australia would like to make your presentation available to the public.
             This involves video­taping your talk, and offering the video/audio and slides
@@ -586,4 +579,3 @@ accommdisplay();
             preference that you let us know.</p>
           </fieldset>
 % endif
-
