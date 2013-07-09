@@ -19,6 +19,7 @@ requires = [
     "pydns",
     "psycopg2",
     "PIL",
+    "factory_boy",
     #### LEGACY (zkpylon) requirements:
     "pylons",
     "AuthKit>=0.4.0",
