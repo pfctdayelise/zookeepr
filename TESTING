@@ -1,0 +1,18 @@
+====== Testing Zookeepr ======
+
+Tests should be written for functionality as it is ported from Pylons to Pyramid.
+
+There are some old tests that don't run. If you want to salvage them into some new format that would be grand. Otherwise ignore them. New tests reside in `/zk/tests/models`.
+
+Run tests with py.test (installed with `pip install pytest`). For example: `py.test zk/tests/model/ --tb=short -v`
+
+====== Testing models ======
+Models can be tested using `factory_boy`.
+
+In `/zk/tests/models/factories.py` import your model class (Foo) and create a factory (FooFactory) for it. In your factory you only need to list attributes that you potentially want to change when instantiating.
+
+Create a new file per model class, `test_foo.py`. Then import your factory and use it to create model instances to test the methods of.
+
+
+====== Testing controllers ======
+TBD. Selenium??

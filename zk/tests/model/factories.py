@@ -14,20 +14,27 @@ zk/model/__init__.py            zk/model/product.py                      zk/mode
 zk/model/invoice_item.py        zk/model/proposal.py                     zk/model/volunteer.py
 zk/model/invoice.py             zk/model/registration_product.py         zk/model/vote.py
 zk/model/location.py            zk/model/registration.py                 zk/model/voucher.py
-"""
+""" 
 
 import datetime
+import factory
+from factory.alchemy import SQLAlchemyModelFactory
 from sqlalchemy import Column, Integer, Unicode, create_engine
 from sqlalchemy.orm import scoped_session, sessionmaker
 from zk.model.meta import Base
 from zk.model.person import Person
-import factory
-from factory.alchemy import SQLAlchemyModelFactory
+from zk.model.role import Role
+
 
 
 session = scoped_session(sessionmaker())
 engine = create_engine('sqlite://')
 session.configure(bind=engine)
+# this is quite slow. this is making the tables
+# and also populating them with initial data.
+# note alembic only does the schema ie making
+# the tables. maybe we should use that instead
+# and only call this if we really need it?
 Base.metadata.create_all(engine)
 
 
@@ -51,3 +58,7 @@ class PersonFactory(SQLAlchemyModelFactory):
     mobile = factory.Sequence(lambda n: '04%08d' % n)
     url = factory.LazyAttribute(lambda obj: 'http://www.{}.com'.format(obj.fullname.replace(' ', ''))) 
 
+
+class RoleFactory(SQLAlchemyModelFactory):
+    FACTORY_FOR = Role
+    FACTORY_SESSION = session

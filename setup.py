@@ -20,6 +20,7 @@ requires = [
     "psycopg2",
     "PIL",
     "factory_boy",
+    "pytest",
     #### LEGACY (zkpylon) requirements:
     "pylons",
     "AuthKit>=0.4.0",

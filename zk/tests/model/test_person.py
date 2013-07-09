@@ -31,12 +31,11 @@ def test_password_hashing():
 
 def test_default_roles():
     a = PersonFactory()
-    assert not a.is_professional()
+    assert a.roles == []
     assert not a.is_speaker()
     assert not a.is_miniconf_org()
+    assert not a.is_professional()
     assert not a.is_volunteer()
-    assert not a.has_valid_invoice()
-    assert not a.has_paid_ticket()
 
 
 def test_is_from_common_country():
@@ -47,6 +46,8 @@ def test_is_from_common_country():
 
 
 """
+    assert not a.has_valid_invoice()
+    assert not a.has_paid_ticket()
 has_role
 valid_invoice
 ticket_type
